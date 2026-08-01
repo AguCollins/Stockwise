@@ -62,7 +62,8 @@ function PaymentBadge({ method }) {
   );
 }
 
-function SummaryCard({ icon: Icon, iconBg, iconColor, label, value, sub, subColor, animDelay }) {
+function SummaryCard({ icon, iconBg, iconColor, label, value, sub, subColor, animDelay }) {
+  const Icon = icon;
   return (
     <div className="bg-white rounded-2xl p-4 sm:p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 animate-fade-up"
       style={{ animationDelay: animDelay }}>
@@ -85,8 +86,6 @@ function SummaryCard({ icon: Icon, iconBg, iconColor, label, value, sub, subColo
 }
 
 function SaleCard({ order, onView }) {
-  const pmtCfg     = paymentConfig[order.payment] ?? paymentConfig.Cash;
-
   return (
     <button onClick={() => onView(order)}
       className="w-full bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-left hover:shadow-md hover:-translate-y-0.5 transition-all animate-fade-up active:scale-[0.98]">

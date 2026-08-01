@@ -1,12 +1,11 @@
 // src/context/AuthContext.jsx
-import { createContext, useState } from 'react';
+import { useState } from 'react';
+import { AuthContext } from './authContextValue';
 
-// Create the context. Exported so useAuth.js (src/hooks/useAuth.js) can
-// consume it. Keeping only the Provider component in this file satisfies
+// AuthProvider wraps the app and provides auth state everywhere.
+// This file exports only this component (the context object itself
+// lives in ./authContextValue.js) to satisfy
 // react-refresh/only-export-components.
-export const AuthContext = createContext(null);
-
-// AuthProvider wraps the app and provides auth state everywhere
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(false);

@@ -6,19 +6,22 @@ import {
   Building2, CreditCard, ChevronRight,
   Package, CheckCircle, ArrowLeft,
 } from 'lucide-react';
-import { inventoryItems, paymentMethods } from '../../data/mockData';
+import { inventoryItems } from '../../data/mockData';
 import { ItemIcon } from '../../utils/inventoryIcons';
 
 const naira = (v) => `₦${Number(v).toLocaleString()}`;
 
-// ── Payment method config ─────────────────────────
+// Order ID generation is impure (Math.random). Kept as a module-level
+// utility, called only from the handleSubmit event handler, never
+// during render, to satisfy the react-hooks/purity rule.
+const generateOrderId = () => `ORD-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+
 const paymentConfig = {
   Cash:     { icon: Banknote,   color: 'text-blue-600',   bg: 'bg-blue-50',   border: 'border-blue-300'   },
   Transfer: { icon: Building2,  color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-300' },
   POS:      { icon: CreditCard, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-300' },
 };
 
-// ── Cart item row ─────────────────────────────────
 function CartItem({ item, onUpdateQty, onRemove }) {
   return (
     <div className="flex items-center gap-2.5 bg-gray-50 rounded-xl p-3 group">
@@ -28,7 +31,6 @@ function CartItem({ item, onUpdateQty, onRemove }) {
         <p className="text-xs font-semibold text-gray-800 truncate leading-tight">{item.name}</p>
         <p className="text-[10px] text-green-600 font-bold">{naira(item.sellingPrice)}</p>
       </div>
-      {/* Qty stepper */}
       <div className="flex items-center gap-1 flex-shrink-0">
         <button onClick={() => onUpdateQty(item.id, item.qty - 1)}
           className="w-6 h-6 rounded-lg bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-100 active:scale-90 transition-all">
@@ -52,6 +54,8 @@ function CartItem({ item, onUpdateQty, onRemove }) {
 }
 
 export default function NewSaleModal({ isOpen, onClose, onSave }) {
+  // All hooks are declared unconditionally, before any early return,
+  // to satisfy react-hooks/rules-of-hooks.
   const [cart, setCart]         = useState([]);
   const [search, setSearch]     = useState('');
   const [customer, setCustomer] = useState('');
@@ -59,9 +63,7 @@ export default function NewSaleModal({ isOpen, onClose, onSave }) {
   const [note, setNote]         = useState('');
   const [errors, setErrors]     = useState({});
   const [saving, setSaving]     = useState(false);
-  const [step, setStep]         = useState(1); // 1=items, 2=payment
-
-  if (!isOpen) return null;
+  const [step, setStep]         = useState(1);
 
   const filteredInventory = useMemo(() => {
     const q = search.toLowerCase();
@@ -72,6 +74,12 @@ export default function NewSaleModal({ isOpen, onClose, onSave }) {
       )
     );
   }, [search]);
+
+  // removeFromCart is declared before updateQty since updateQty
+  // references it.
+  const removeFromCart = useCallback((id) => {
+    setCart(prev => prev.filter(c => c.id !== id));
+  }, []);
 
   const addToCart = useCallback((item) => {
     setCart(prev => {
@@ -94,11 +102,7 @@ export default function NewSaleModal({ isOpen, onClose, onSave }) {
     setCart(prev =>
       prev.map(c => c.id === id ? { ...c, qty: Math.min(qty, item.stock) } : c)
     );
-  }, []);
-
-  const removeFromCart = useCallback((id) => {
-    setCart(prev => prev.filter(c => c.id !== id));
-  }, []);
+  }, [removeFromCart]);
 
   const subtotal = cart.reduce((s, c) => s + c.sellingPrice * c.qty, 0);
   const totalItems = cart.reduce((s, c) => s + c.qty, 0);
@@ -115,7 +119,7 @@ export default function NewSaleModal({ isOpen, onClose, onSave }) {
     setSaving(true);
     await new Promise(r => setTimeout(r, 800));
     onSave({
-      id: `ORD-${String(Math.floor(Math.random() * 9000) + 1000)}`,
+      id: generateOrderId(),
       customer: {
         name:      customer,
         initials:  customer.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
@@ -130,7 +134,6 @@ export default function NewSaleModal({ isOpen, onClose, onSave }) {
       note,
     });
     setSaving(false);
-    // Reset
     setCart([]); setCustomer(''); setPayment('Cash');
     setNote(''); setStep(1); setSearch(''); setErrors({});
     onClose();
@@ -142,18 +145,17 @@ export default function NewSaleModal({ isOpen, onClose, onSave }) {
     onClose();
   };
 
+  if (!isOpen) return null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm">
-      {/* Modal panel */}
       <div className="bg-white w-full sm:rounded-2xl sm:max-w-2xl shadow-2xl flex flex-col rounded-t-2xl"
         style={{ maxHeight: '95vh' }}>
 
-        {/* Handle (mobile) */}
         <div className="flex justify-center pt-3 sm:hidden flex-shrink-0">
           <div className="w-10 h-1 bg-gray-200 rounded-full" />
         </div>
 
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-green-100 rounded-xl flex items-center justify-center">
@@ -169,25 +171,21 @@ export default function NewSaleModal({ isOpen, onClose, onSave }) {
             </div>
           </div>
           <button onClick={handleClose}
-            className="w-8 h-8 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 transition-all">
+            className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 transition-all">
             <X size={17} />
           </button>
         </div>
 
-        {/* Step bar */}
         <div className="flex px-5 py-2 gap-2 border-b border-gray-100 flex-shrink-0">
           <div className={`flex-1 h-1 rounded-full transition-all duration-300 ${step >= 1 ? 'bg-green-500' : 'bg-gray-200'}`} />
           <div className={`flex-1 h-1 rounded-full transition-all duration-300 ${step >= 2 ? 'bg-green-500' : 'bg-gray-200'}`} />
         </div>
 
-        {/* ── STEP 1: Items + Customer ── */}
         {step === 1 && (
           <div className="flex flex-col sm:flex-row flex-1 overflow-hidden">
 
-            {/* Left — Inventory picker */}
             <div className="sm:w-1/2 border-b sm:border-b-0 sm:border-r border-gray-100 flex flex-col"
               style={{ maxHeight: '260px', minHeight: 0 }}
-              // On desktop this is full height; on mobile it's capped
             >
               <div className="p-3 border-b border-gray-100 flex-shrink-0">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">
@@ -234,9 +232,7 @@ export default function NewSaleModal({ isOpen, onClose, onSave }) {
               </div>
             </div>
 
-            {/* Right — Cart + Customer */}
             <div className="sm:w-1/2 flex flex-col overflow-hidden">
-              {/* Cart */}
               <div className="flex-1 overflow-y-auto p-3 min-h-0">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
@@ -273,7 +269,6 @@ export default function NewSaleModal({ isOpen, onClose, onSave }) {
                 )}
               </div>
 
-              {/* Customer + total + action */}
               <div className="p-3 border-t border-gray-100 space-y-3 flex-shrink-0">
                 <div>
                   <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">
@@ -296,7 +291,6 @@ export default function NewSaleModal({ isOpen, onClose, onSave }) {
                   )}
                 </div>
 
-                {/* Subtotal strip */}
                 <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-2.5">
                   <div>
                     <p className="text-[10px] text-green-600 font-semibold">
@@ -318,12 +312,10 @@ export default function NewSaleModal({ isOpen, onClose, onSave }) {
           </div>
         )}
 
-        {/* ── STEP 2: Payment ── */}
         {step === 2 && (
           <div className="flex-1 overflow-y-auto">
             <div className="p-5 space-y-5">
 
-              {/* Order summary */}
               <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Order Summary</p>
                 <div className="space-y-2 mb-3">
@@ -353,7 +345,6 @@ export default function NewSaleModal({ isOpen, onClose, onSave }) {
                 </div>
               </div>
 
-              {/* Payment method */}
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">
                   Payment Method
@@ -385,7 +376,6 @@ export default function NewSaleModal({ isOpen, onClose, onSave }) {
                 </div>
               </div>
 
-              {/* Note */}
               <div>
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">
                   Note (optional)
@@ -397,7 +387,6 @@ export default function NewSaleModal({ isOpen, onClose, onSave }) {
                 />
               </div>
 
-              {/* Action buttons */}
               <div className="flex gap-3">
                 <button onClick={() => setStep(1)}
                   className="flex items-center gap-2 flex-1 justify-center py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-all">

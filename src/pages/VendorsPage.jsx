@@ -1,3 +1,4 @@
+// src/pages/VendorsPage.jsx
 import { useState, useMemo, useCallback } from 'react';
 import {
   Plus, Upload, Search, ChevronDown, Edit2, Trash2,
@@ -29,7 +30,8 @@ function MiniStars({ rating }) {
   );
 }
 
-function StatCard({ icon: Icon, iconBg, iconColor, label, value, sub, delay }) {
+function StatCard({ icon, iconBg, iconColor, label, value, sub, delay }) {
+  const Icon = icon;
   return (
     <div className="bg-white rounded-2xl p-4 sm:p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 animate-fade-up"
       style={{ animationDelay: delay }}>
@@ -126,11 +128,11 @@ function VendorCard({ vendor, onView, onEdit, onDelete, onPlaceOrder }) {
           <Eye size={12} /> View
         </button>
         <button onClick={() => onEdit(vendor)}
-          className="w-8 flex items-center justify-center py-2 text-gray-400 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all">
+          className="w-9 flex items-center justify-center py-2 text-gray-400 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all">
           <Edit2 size={12} />
         </button>
         <button onClick={() => onDelete(vendor)}
-          className="w-8 flex items-center justify-center py-2 text-gray-400 bg-gray-50 hover:bg-red-50 hover:text-red-500 rounded-xl transition-all">
+          className="w-9 flex items-center justify-center py-2 text-gray-400 bg-gray-50 hover:bg-red-50 hover:text-red-500 rounded-xl transition-all">
           <Trash2 size={12} />
         </button>
       </div>
@@ -320,7 +322,7 @@ export default function VendorsPage() {
         )}
       </main>
 
-      <VendorModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} editVendor={editVendor} />
+      <VendorModal key={editVendor?.id ?? 'new'} isOpen={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} editVendor={editVendor} />
       <VendorDrawer vendor={drawer} onClose={() => setDrawer(null)} onEdit={() => openEdit(drawer)} onPlaceOrder={() => openOrder(drawer)} />
       <VendorDeleteModal isOpen={deleteModal.open} vendor={deleteModal.vendor} onClose={() => setDeleteModal({ open: false, vendor: null })} onConfirm={handleDelete} />
       <PlaceOrderModal isOpen={orderModal.open} vendor={orderModal.vendor} onClose={() => setOrderModal({ open: false, vendor: null })} onSave={handlePlaceOrder} />

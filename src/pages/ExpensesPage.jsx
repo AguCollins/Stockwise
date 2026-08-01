@@ -3,11 +3,11 @@ import { useState, useMemo, useCallback } from 'react';
 import {
   Plus, Search, ChevronDown, Download, Edit2, Trash2,
   Receipt, TrendingDown, Calendar, Tag, CreditCard,
-  Banknote, Building2, X, SlidersHorizontal, AlertTriangle,
+  Banknote, Building2, X, SlidersHorizontal,
 } from 'lucide-react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, AreaChart, Area,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer,
 } from 'recharts';
 import TopBar             from '../components/layout/TopBar';
 import ExpenseModal       from '../components/expenses/ExpenseModal';
@@ -25,7 +25,6 @@ const naira = (v) => {
 const fmtDate = (iso) =>
   new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
 
-// Payment icon map
 const pmtIcons = { Cash: Banknote, Transfer: Building2, Card: CreditCard };
 const pmtColors = {
   Cash:     'bg-blue-50 text-blue-700',
@@ -43,7 +42,8 @@ function PaymentBadge({ method }) {
   );
 }
 
-function StatCard({ icon: Icon, iconBg, iconColor, label, value, sub, subColor, delay }) {
+function StatCard({ icon, iconBg, iconColor, label, value, sub, subColor, delay }) {
+  const Icon = icon;
   return (
     <div className="bg-white rounded-2xl p-4 sm:p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 animate-fade-up"
       style={{ animationDelay: delay }}>
@@ -210,7 +210,6 @@ export default function ExpensesPage() {
           <StatCard icon={TrendingDown} iconBg="bg-purple-100" iconColor="text-purple-600" label="Total All Time" value={naira(stats.total)}        sub={`${expenses.length} transactions`} subColor="text-purple-600" delay="0.20s" />
         </div>
 
-        {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-5">
           <div className="lg:col-span-3 bg-white rounded-2xl p-5 sm:p-6 border border-gray-100 shadow-sm">
             <h3 className="text-sm font-bold text-gray-900 mb-1">Monthly Trend</h3>
@@ -236,7 +235,6 @@ export default function ExpensesPage() {
           </div>
         </div>
 
-        {/* Category tabs */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
           <button onClick={() => setCategory('all')}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all flex-shrink-0
@@ -266,7 +264,6 @@ export default function ExpensesPage() {
           })}
         </div>
 
-        {/* Toolbar */}
         <div className="space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
             <div className="relative flex-1 min-w-[180px] max-w-sm">
@@ -308,7 +305,6 @@ export default function ExpensesPage() {
           )}
         </div>
 
-        {/* Expenses table */}
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm text-center animate-fade-up">
             <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -377,11 +373,11 @@ export default function ExpensesPage() {
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-1.5 opacity-50 group-hover:opacity-100 transition-opacity">
                             <button onClick={() => openEdit(expense)}
-                              className="w-7 h-7 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 text-gray-400 transition-all" title="Edit">
+                              className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 text-gray-400 transition-all" title="Edit">
                               <Edit2 size={12} />
                             </button>
                             <button onClick={() => openDel(expense)}
-                              className="w-7 h-7 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-500 text-gray-400 transition-all" title="Delete">
+                              className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-500 text-gray-400 transition-all" title="Delete">
                               <Trash2 size={12} />
                             </button>
                           </div>
@@ -403,7 +399,7 @@ export default function ExpensesPage() {
         )}
       </main>
 
-      <ExpenseModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} editExpense={editExpense} />
+      <ExpenseModal key={editExpense?.id ?? 'new'} isOpen={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} editExpense={editExpense} />
       <ExpenseDeleteModal isOpen={deleteModal.open} expense={deleteModal.expense} onClose={() => setDeleteModal({ open: false, expense: null })} onConfirm={handleDelete} />
     </div>
   );

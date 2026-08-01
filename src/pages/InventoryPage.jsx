@@ -54,7 +54,8 @@ function MarginBadge({ cost, sell }) {
   );
 }
 
-function MiniStat({ icon: Icon, iconBg, iconColor, label, value, animDelay }) {
+function MiniStat({ icon, iconBg, iconColor, label, value, animDelay }) {
+  const Icon = icon;
   return (
     <div className="bg-white rounded-2xl p-4 sm:p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 animate-fade-up"
       style={{ animationDelay: animDelay }}>
@@ -79,17 +80,14 @@ function ItemCard({ item, onEdit, onDelete, selected, onSelect }) {
     <div className={`bg-white rounded-2xl border p-4 transition-all animate-fade-up
       ${selected ? 'border-green-400 ring-2 ring-green-100' : 'border-gray-100 shadow-sm'}`}>
       <div className="flex items-start gap-3">
-        {/* Checkbox */}
         <button onClick={() => onSelect(item.id)}
           className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all
             ${selected ? 'bg-green-600 border-green-600' : 'border-gray-300'}`}>
           {selected && <CheckCircle size={12} className="text-white" />}
         </button>
 
-        {/* Icon */}
         <ItemIcon iconName={item.iconName} bg={item.bg} size={18} className="w-10 h-10" />
 
-        {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -141,7 +139,7 @@ function ItemCard({ item, onEdit, onDelete, selected, onSelect }) {
   );
 }
 
-function SortTh({ col, label, sortBy, sortDir, onSort }) {
+function SortTh({ col, label, sortBy, onSort }) {
   const active = sortBy === col;
   return (
     <th onClick={() => onSort(col)}
@@ -414,12 +412,12 @@ export default function InventoryPage() {
                         )}
                       </button>
                     </th>
-                    <SortTh col="name"         label="Product"       sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
-                    <SortTh col="sku"          label="SKU"           sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
-                    <SortTh col="category"     label="Category"      sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
-                    <SortTh col="stock"        label="Stock"         sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
-                    <SortTh col="costPrice"    label="Cost"          sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
-                    <SortTh col="sellingPrice" label="Selling"       sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                    <SortTh col="name"         label="Product"       sortBy={sortBy} onSort={toggleSort} />
+                    <SortTh col="sku"          label="SKU"           sortBy={sortBy} onSort={toggleSort} />
+                    <SortTh col="category"     label="Category"      sortBy={sortBy} onSort={toggleSort} />
+                    <SortTh col="stock"        label="Stock"         sortBy={sortBy} onSort={toggleSort} />
+                    <SortTh col="costPrice"    label="Cost"          sortBy={sortBy} onSort={toggleSort} />
+                    <SortTh col="sellingPrice" label="Selling"       sortBy={sortBy} onSort={toggleSort} />
                     <th className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 px-4 py-3">Margin</th>
                     <th className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 px-4 py-3">Status</th>
                     <th className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 px-4 py-3">Actions</th>
@@ -554,6 +552,7 @@ export default function InventoryPage() {
       </main>
 
       <ItemModal
+        key={editItem?.id ?? 'new'}
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         onSave={handleSave}

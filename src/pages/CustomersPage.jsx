@@ -38,7 +38,8 @@ function StatusBadge({ status }) {
   );
 }
 
-function StatCard({ icon: Icon, iconBg, iconColor, label, value, sub, delay }) {
+function StatCard({ icon, iconBg, iconColor, label, value, sub, delay }) {
+  const Icon = icon;
   return (
     <div className="bg-white rounded-2xl p-4 sm:p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 animate-fade-up"
       style={{ animationDelay: delay }}>
@@ -123,7 +124,7 @@ function CustomerCard({ customer, onView, onEdit, onDelete }) {
           <Edit2 size={12} /> Edit
         </button>
         <button onClick={() => onDelete(customer)}
-          className="w-8 flex items-center justify-center py-2 text-gray-400 bg-gray-50 hover:bg-red-50 hover:text-red-500 rounded-xl transition-all">
+          className="w-9 flex items-center justify-center py-2 text-gray-400 bg-gray-50 hover:bg-red-50 hover:text-red-500 rounded-xl transition-all">
           <Trash2 size={12} />
         </button>
       </div>
@@ -231,7 +232,6 @@ export default function CustomersPage() {
           </div>
         )}
 
-        {/* Toolbar */}
         <div className="space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
             <div className="relative flex-1 min-w-[180px] max-w-sm">
@@ -258,12 +258,12 @@ export default function CustomersPage() {
             </span>
             <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1">
               <button onClick={() => setViewMode('grid')}
-                className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all
+                className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all
                   ${viewMode === 'grid' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}>
                 <LayoutGrid size={14} />
               </button>
               <button onClick={() => setViewMode('list')}
-                className={`w-7 h-7 flex items-center justify-center rounded-lg transition-all
+                className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all
                   ${viewMode === 'list' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}>
                 <List size={14} />
               </button>
@@ -296,7 +296,6 @@ export default function CustomersPage() {
           )}
         </div>
 
-        {/* Empty state */}
         {filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm text-center animate-fade-up">
             <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -315,7 +314,6 @@ export default function CustomersPage() {
           </div>
         )}
 
-        {/* Grid view */}
         {filtered.length > 0 && viewMode === 'grid' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
             {filtered.map(c => (
@@ -331,7 +329,6 @@ export default function CustomersPage() {
           </div>
         )}
 
-        {/* List view */}
         {filtered.length > 0 && viewMode === 'list' && (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden animate-fade-up">
             <div className="overflow-x-auto">
@@ -379,9 +376,9 @@ export default function CustomersPage() {
                       <td className="px-4 py-3.5"><StatusBadge status={c.status} /></td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-1.5 opacity-50 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => openView(c)} className="w-7 h-7 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-green-50 hover:border-green-200 hover:text-green-600 text-gray-400 transition-all"><Eye size={12} /></button>
-                          <button onClick={() => openEdit(c)} className="w-7 h-7 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 text-gray-400 transition-all"><Edit2 size={12} /></button>
-                          <button onClick={() => openDel(c)} className="w-7 h-7 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-500 text-gray-400 transition-all"><Trash2 size={12} /></button>
+                          <button onClick={() => openView(c)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-green-50 hover:border-green-200 hover:text-green-600 text-gray-400 transition-all"><Eye size={12} /></button>
+                          <button onClick={() => openEdit(c)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 text-gray-400 transition-all"><Edit2 size={12} /></button>
+                          <button onClick={() => openDel(c)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-500 text-gray-400 transition-all"><Trash2 size={12} /></button>
                         </div>
                       </td>
                     </tr>
@@ -400,7 +397,13 @@ export default function CustomersPage() {
         )}
       </main>
 
-      <CustomerModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} editCustomer={editCustomer} />
+      <CustomerModal
+        key={editCustomer?.id ?? 'new'}
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSave={handleSave}
+        editCustomer={editCustomer}
+      />
       <CustomerDrawer customer={drawer} onClose={() => setDrawer(null)} onEdit={() => openEdit(drawer)} />
       <CustomerDeleteModal isOpen={deleteModal.open} customer={deleteModal.customer} onClose={() => setDeleteModal({ open: false, customer: null })} onConfirm={handleDelete} />
     </div>
