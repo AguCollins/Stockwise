@@ -4,9 +4,6 @@ import { X, ShoppingCart, Loader2, Plus, Minus, Trash2, Package } from 'lucide-r
 
 const naira = (v) => `₦${Number(v).toLocaleString()}`;
 
-// Purchase order ID generation is impure (Math.random). Kept as a
-// module-level utility, called only from handleSubmit, never during
-// render, to satisfy the react-hooks/purity rule.
 const generatePurchaseOrderId = () => `PO-${String(Math.floor(Math.random() * 900) + 100)}`;
 
 export default function PlaceOrderModal({ isOpen, onClose, onSave, vendor }) {
@@ -42,12 +39,17 @@ export default function PlaceOrderModal({ isOpen, onClose, onSave, vendor }) {
     setSaving(true);
     await new Promise(r => setTimeout(r, 800));
 
+    const validLineItems = orderItems
+      .filter(r => r.name.trim() && r.qty > 0 && Number(r.unitPrice) > 0)
+      .map(r => ({ name: r.name.trim(), qty: Number(r.qty), unitPrice: Number(r.unitPrice) }));
+
     const newOrder = {
-      id:     generatePurchaseOrderId(),
-      date:   new Date().toISOString().slice(0, 10),
-      items:  orderItems.filter(r => r.name.trim()).length,
+      id:        generatePurchaseOrderId(),
+      date:      new Date().toISOString().slice(0, 10),
+      items:     validLineItems.length,
+      lineItems: validLineItems,
       total,
-      status: 'pending',
+      status:    'pending',
       note,
     };
 

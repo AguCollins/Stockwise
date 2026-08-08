@@ -11,7 +11,11 @@ import VendorModal       from '../components/vendors/VendorModal';
 import VendorDrawer      from '../components/vendors/VendorDrawer';
 import VendorDeleteModal from '../components/vendors/VendorDeleteModal';
 import PlaceOrderModal   from '../components/vendors/PlaceOrderModal';
-import { vendorsData, vendorCategories, vendorStatuses } from '../data/mockData';
+import LoadingState from '../components/ui/LoadingState';
+import ErrorState from '../components/ui/ErrorState';
+import ActionErrorBanner from '../components/ui/ActionErrorBanner';
+import { vendorCategories, vendorStatuses } from '../data/mockData';
+import { useVendors } from '../hooks/useVendors';
 
 const naira = (v) => {
   if (v >= 1000000) return `₦${(v / 1000000).toFixed(1)}M`;
@@ -141,7 +145,7 @@ function VendorCard({ vendor, onView, onEdit, onDelete, onPlaceOrder }) {
 }
 
 export default function VendorsPage() {
-  const [vendors, setVendors]       = useState(vendorsData);
+  const { vendors, loading, error, refetch, saveVendor, removeVendor, placeOrder } = useVendors();
   const [search, setSearch]         = useState('');
   const [categoryFilter, setCategory] = useState('All');
   const [statusFilter, setStatus]   = useState('All');
@@ -151,6 +155,7 @@ export default function VendorsPage() {
   const [drawer, setDrawer]         = useState(null);
   const [deleteModal, setDeleteModal] = useState({ open: false, vendor: null });
   const [orderModal, setOrderModal] = useState({ open: false, vendor: null });
+  const [actionError, setActionError] = useState(null);
 
   const stats = useMemo(() => ({
     total:     vendors.length,
@@ -181,25 +186,30 @@ export default function VendorsPage() {
   const openDel      = useCallback((v) => setDeleteModal({ open: true, vendor: v }), []);
   const openOrder    = useCallback((v) => { setOrderModal({ open: true, vendor: v }); setDrawer(null); }, []);
 
-  const handleSave = useCallback((saved) => {
-    setVendors(prev =>
-      prev.some(v => v.id === saved.id)
-        ? prev.map(v => v.id === saved.id ? saved : v)
-        : [...prev, saved]
-    );
-  }, []);
+  const handleSave = useCallback(async (saved) => {
+    try {
+      await saveVendor(saved, !!editVendor);
+    } catch (err) {
+      setActionError(err.message ?? 'Could not save this vendor. Please try again.');
+    }
+  }, [saveVendor, editVendor]);
 
-  const handleDelete = useCallback((id) => {
-    setVendors(prev => prev.filter(v => v.id !== id));
-    if (drawer?.id === id) setDrawer(null);
-  }, [drawer]);
+  const handleDelete = useCallback(async (id) => {
+    try {
+      await removeVendor(id);
+      if (drawer?.id === id) setDrawer(null);
+    } catch (err) {
+      setActionError(err.message ?? 'Could not delete this vendor. Please try again.');
+    }
+  }, [removeVendor, drawer]);
 
-  const handlePlaceOrder = useCallback((vendorId, newOrder, total) => {
-    setVendors(prev => prev.map(v => {
-      if (v.id !== vendorId) return v;
-      return { ...v, totalOrders: v.totalOrders + 1, pendingAmount: v.pendingAmount + total, lastOrder: newOrder.date, orders: [newOrder, ...(v.orders ?? [])] };
-    }));
-  }, []);
+  const handlePlaceOrder = useCallback(async (vendorId, newOrder, total) => {
+    try {
+      await placeOrder(vendorId, newOrder, total);
+    } catch (err) {
+      setActionError(err.message ?? 'Could not place this order. Please try again.');
+    }
+  }, [placeOrder]);
 
   const headerActions = (
     <>
@@ -219,106 +229,115 @@ export default function VendorsPage() {
 
       <main className="flex-1 px-4 sm:px-6 lg:px-8 py-5 sm:py-6 space-y-5">
 
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-          <StatCard icon={Truck}      iconBg="bg-blue-100"   iconColor="text-blue-600"   label="Total Vendors"    value={stats.total}            sub={`${stats.active} active`} delay="0.05s" />
-          <StatCard icon={Package}    iconBg="bg-green-100"  iconColor="text-green-600"  label="Active Suppliers" value={stats.active}           sub="Currently active" delay="0.10s" />
-          <StatCard icon={TrendingUp} iconBg="bg-purple-100" iconColor="text-purple-600" label="Total Purchases"  value={naira(stats.totalPaid)} sub="All time spend" delay="0.15s" />
-          <StatCard icon={Clock}      iconBg="bg-amber-100"  iconColor="text-amber-600"  label="Pending Orders"   value={stats.pending}          sub="Awaiting delivery" delay="0.20s" />
-        </div>
+        {loading && <LoadingState label="Loading vendors..." />}
+        {!loading && error && <ErrorState message={error} onRetry={refetch} />}
 
-        {vendors.some(v => v.pendingAmount > 0) && (
-          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 animate-fade-up">
-            <div className="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <AlertTriangle size={14} className="text-amber-600" />
-            </div>
-            <p className="text-sm text-amber-800 font-medium flex-1">
-              <strong>{vendors.filter(v => v.pendingAmount > 0).length} vendor{vendors.filter(v => v.pendingAmount > 0).length > 1 ? 's' : ''}</strong> have outstanding payment balances. Total: <strong>{naira(vendors.reduce((s, v) => s + v.pendingAmount, 0))}</strong>
-            </p>
-          </div>
-        )}
+        {!loading && !error && (
+          <>
+            <ActionErrorBanner message={actionError} onDismiss={() => setActionError(null)} />
 
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative flex-1 min-w-[180px] max-w-sm">
-              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search vendor, items, location..."
-                className="w-full pl-10 pr-9 py-2.5 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all" />
-              {search && (
-                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"><X size={14} /></button>
-              )}
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+              <StatCard icon={Truck}      iconBg="bg-blue-100"   iconColor="text-blue-600"   label="Total Vendors"    value={stats.total}            sub={`${stats.active} active`} delay="0.05s" />
+              <StatCard icon={Package}    iconBg="bg-green-100"  iconColor="text-green-600"  label="Active Suppliers" value={stats.active}           sub="Currently active" delay="0.10s" />
+              <StatCard icon={TrendingUp} iconBg="bg-purple-100" iconColor="text-purple-600" label="Total Purchases"  value={naira(stats.totalPaid)} sub="All time spend" delay="0.15s" />
+              <StatCard icon={Clock}      iconBg="bg-amber-100"  iconColor="text-amber-600"  label="Pending Orders"   value={stats.pending}          sub="Awaiting delivery" delay="0.20s" />
             </div>
-            <button onClick={() => setShowFilters(v => !v)}
-              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all
-                ${showFilters ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-              <SlidersHorizontal size={14} /><span className="hidden sm:inline">Filter</span>
-            </button>
-            <span className="text-sm text-gray-400 font-medium ml-auto">
-              <strong className="text-gray-700">{filtered.length}</strong><span className="hidden sm:inline"> vendors</span>
-            </span>
-          </div>
-          {showFilters && (
-            <div className="flex items-center gap-2 flex-wrap animate-fade-up">
-              <div className="relative">
-                <select value={categoryFilter} onChange={e => setCategory(e.target.value)}
-                  className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none font-medium text-gray-600 cursor-pointer focus:border-green-400 transition-all">
-                  {vendorCategories.map(c => <option key={c} value={c}>{c === 'All' ? 'All Categories' : c}</option>)}
-                </select>
-                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+
+            {vendors.some(v => v.pendingAmount > 0) && (
+              <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 animate-fade-up">
+                <div className="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle size={14} className="text-amber-600" />
+                </div>
+                <p className="text-sm text-amber-800 font-medium flex-1">
+                  <strong>{vendors.filter(v => v.pendingAmount > 0).length} vendor{vendors.filter(v => v.pendingAmount > 0).length > 1 ? 's' : ''}</strong> have outstanding payment balances. Total: <strong>{naira(vendors.reduce((s, v) => s + v.pendingAmount, 0))}</strong>
+                </p>
               </div>
-              <div className="relative">
-                <select value={statusFilter} onChange={e => setStatus(e.target.value)}
-                  className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none font-medium text-gray-600 cursor-pointer focus:border-green-400 transition-all">
-                  {vendorStatuses.map(s => <option key={s} value={s}>{s === 'All' ? 'All Status' : s}</option>)}
-                </select>
-                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
-              {(categoryFilter !== 'All' || statusFilter !== 'All' || search) && (
-                <button onClick={() => { setSearch(''); setCategory('All'); setStatus('All'); }}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:text-red-700 px-2 py-1 transition-colors">
-                  <X size={12} /> Clear
+            )}
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative flex-1 min-w-[180px] max-w-sm">
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input value={search} onChange={e => setSearch(e.target.value)}
+                    placeholder="Search vendor, items, location..."
+                    className="w-full pl-10 pr-9 py-2.5 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all" />
+                  {search && (
+                    <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"><X size={14} /></button>
+                  )}
+                </div>
+                <button onClick={() => setShowFilters(v => !v)}
+                  className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all
+                    ${showFilters ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                  <SlidersHorizontal size={14} /><span className="hidden sm:inline">Filter</span>
                 </button>
+                <span className="text-sm text-gray-400 font-medium ml-auto">
+                  <strong className="text-gray-700">{filtered.length}</strong><span className="hidden sm:inline"> vendors</span>
+                </span>
+              </div>
+              {showFilters && (
+                <div className="flex items-center gap-2 flex-wrap animate-fade-up">
+                  <div className="relative">
+                    <select value={categoryFilter} onChange={e => setCategory(e.target.value)}
+                      className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none font-medium text-gray-600 cursor-pointer focus:border-green-400 transition-all">
+                      {vendorCategories.map(c => <option key={c} value={c}>{c === 'All' ? 'All Categories' : c}</option>)}
+                    </select>
+                    <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+                  <div className="relative">
+                    <select value={statusFilter} onChange={e => setStatus(e.target.value)}
+                      className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none font-medium text-gray-600 cursor-pointer focus:border-green-400 transition-all">
+                      {vendorStatuses.map(s => <option key={s} value={s}>{s === 'All' ? 'All Status' : s}</option>)}
+                    </select>
+                    <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+                  {(categoryFilter !== 'All' || statusFilter !== 'All' || search) && (
+                    <button onClick={() => { setSearch(''); setCategory('All'); setStatus('All'); }}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:text-red-700 px-2 py-1 transition-colors">
+                      <X size={12} /> Clear
+                    </button>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
 
-        {filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm text-center animate-fade-up">
-            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Truck size={28} className="text-gray-400" />
-            </div>
-            <h3 className="text-base font-bold text-gray-700 mb-2">No vendors found</h3>
-            <p className="text-sm text-gray-400 mb-6 max-w-xs">
-              {search ? `No results for "${search}".` : 'Add your first supplier to get started.'}
-            </p>
-            <button onClick={openAdd}
-              className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 active:scale-95 transition-all">
-              <Plus size={15} /> Add Vendor
-            </button>
-          </div>
-        )}
-
-        {filtered.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-            {filtered.map(v => (
-              <VendorCard key={v.id} vendor={v} onView={openView} onEdit={openEdit} onDelete={openDel} onPlaceOrder={openOrder} />
-            ))}
-            <button onClick={openAdd}
-              className="border-2 border-dashed border-gray-200 rounded-2xl p-5 flex flex-col items-center justify-center gap-3 text-gray-400 hover:border-green-300 hover:text-green-600 hover:bg-green-50/50 transition-all min-h-[200px] group">
-              <div className="w-11 h-11 rounded-xl bg-gray-100 group-hover:bg-green-100 flex items-center justify-center transition-all">
-                <Plus size={20} />
+            {filtered.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm text-center animate-fade-up">
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Truck size={28} className="text-gray-400" />
+                </div>
+                <h3 className="text-base font-bold text-gray-700 mb-2">No vendors found</h3>
+                <p className="text-sm text-gray-400 mb-6 max-w-xs">
+                  {search ? `No results for "${search}".` : 'Add your first supplier to get started.'}
+                </p>
+                <button onClick={openAdd}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 active:scale-95 transition-all">
+                  <Plus size={15} /> Add Vendor
+                </button>
               </div>
-              <p className="text-sm font-bold">Add Vendor</p>
-            </button>
-          </div>
-        )}
+            )}
 
-        {filtered.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
-            <span>Showing <strong className="text-gray-700">{filtered.length}</strong> of {vendors.length} vendors</span>
-            <span className="hidden sm:block">Combined spend: <strong className="text-green-600">{naira(filtered.reduce((s, v) => s + v.totalPaid, 0))}</strong></span>
-          </div>
+            {filtered.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+                {filtered.map(v => (
+                  <VendorCard key={v.id} vendor={v} onView={openView} onEdit={openEdit} onDelete={openDel} onPlaceOrder={openOrder} />
+                ))}
+                <button onClick={openAdd}
+                  className="border-2 border-dashed border-gray-200 rounded-2xl p-5 flex flex-col items-center justify-center gap-3 text-gray-400 hover:border-green-300 hover:text-green-600 hover:bg-green-50/50 transition-all min-h-[200px] group">
+                  <div className="w-11 h-11 rounded-xl bg-gray-100 group-hover:bg-green-100 flex items-center justify-center transition-all">
+                    <Plus size={20} />
+                  </div>
+                  <p className="text-sm font-bold">Add Vendor</p>
+                </button>
+              </div>
+            )}
+
+            {filtered.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
+                <span>Showing <strong className="text-gray-700">{filtered.length}</strong> of {vendors.length} vendors</span>
+                <span className="hidden sm:block">Combined spend: <strong className="text-green-600">{naira(filtered.reduce((s, v) => s + v.totalPaid, 0))}</strong></span>
+              </div>
+            )}
+          </>
         )}
       </main>
 

@@ -1,23 +1,47 @@
 // src/context/AuthContext.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthContext } from './authContextValue';
 
-// AuthProvider wraps the app and provides auth state everywhere.
-// This file exports only this component (the context object itself
-// lives in ./authContextValue.js) to satisfy
-// react-refresh/only-export-components.
+const STORAGE_KEY = 'stockwise.auth';
+
+function readStoredAuth() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredAuth(payload) {
+  try {
+    if (payload) localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    else localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    return;
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [token, setToken] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(true);
 
-  // Simulate login (replace with real API call later)
+  useEffect(() => {
+    const stored = readStoredAuth();
+    if (stored?.user && stored?.token) {
+      setUser(stored.user);
+      setToken(stored.token);
+    }
+    setIsRestoring(false);
+  }, []);
+
   const login = async (email) => {
     setIsLoading(true);
     try {
-      // Simulated delay like a real API
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      // Mock successful login
       const mockUser = {
         id: 1,
         email,
@@ -25,7 +49,10 @@ export function AuthProvider({ children }) {
         lastName: 'Owner',
         businessName: 'My Store',
       };
+      const mockToken = `mock-token-${Date.now()}`;
       setUser(mockUser);
+      setToken(mockToken);
+      writeStoredAuth({ user: mockUser, token: mockToken });
       return { success: true };
     } catch {
       return { success: false, message: 'Login failed' };
@@ -34,7 +61,6 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Simulate signup
   const signup = async (formData) => {
     setIsLoading(true);
     try {
@@ -46,8 +72,12 @@ export function AuthProvider({ children }) {
         firstName: formData.firstName,
         lastName: formData.lastName,
         businessName: formData.businessName,
+        businessType: formData.businessType,
       };
+      const mockToken = `mock-token-${Date.now()}`;
       setUser(mockUser);
+      setToken(mockToken);
+      writeStoredAuth({ user: mockUser, token: mockToken });
       return { success: true };
     } catch {
       return { success: false, message: 'Signup failed' };
@@ -56,13 +86,14 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Logout clears the user
   const logout = () => {
     setUser(null);
+    setToken(null);
+    writeStoredAuth(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, token, isLoading, isRestoring, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -10,7 +10,11 @@ import TopBar              from '../components/layout/TopBar';
 import CustomerModal       from '../components/customers/CustomerModal';
 import CustomerDrawer      from '../components/customers/CustomerDrawer';
 import CustomerDeleteModal from '../components/customers/CustomerDeleteModal';
-import { customersData, customerTypes, customerStatuses } from '../data/mockData';
+import LoadingState from '../components/ui/LoadingState';
+import ErrorState from '../components/ui/ErrorState';
+import ActionErrorBanner from '../components/ui/ActionErrorBanner';
+import { customerTypes, customerStatuses } from '../data/mockData';
+import { useCustomers } from '../hooks/useCustomers';
 
 const naira = (v) => {
   if (v >= 1000000) return `₦${(v / 1000000).toFixed(1)}M`;
@@ -133,7 +137,7 @@ function CustomerCard({ customer, onView, onEdit, onDelete }) {
 }
 
 export default function CustomersPage() {
-  const [customers, setCustomers]   = useState(customersData);
+  const { customers, loading, error, refetch, saveCustomer, removeCustomer } = useCustomers();
   const [search, setSearch]         = useState('');
   const [typeFilter, setType]       = useState('All');
   const [statusFilter, setStatus]   = useState('All');
@@ -143,6 +147,7 @@ export default function CustomersPage() {
   const [drawer, setDrawer]         = useState(null);
   const [deleteModal, setDeleteModal] = useState({ open: false, customer: null });
   const [showFilters, setShowFilters] = useState(false);
+  const [actionError, setActionError] = useState(null);
 
   const stats = useMemo(() => {
     const thisMonth = new Date(); thisMonth.setDate(1);
@@ -175,18 +180,22 @@ export default function CustomersPage() {
   const openView  = useCallback((c) => setDrawer(c), []);
   const openDel   = useCallback((c) => setDeleteModal({ open: true, customer: c }), []);
 
-  const handleSave = useCallback((saved) => {
-    setCustomers(prev =>
-      prev.some(c => c.id === saved.id)
-        ? prev.map(c => c.id === saved.id ? saved : c)
-        : [...prev, saved]
-    );
-  }, []);
+  const handleSave = useCallback(async (saved) => {
+    try {
+      await saveCustomer(saved, !!editCustomer);
+    } catch (err) {
+      setActionError(err.message ?? 'Could not save this customer. Please try again.');
+    }
+  }, [saveCustomer, editCustomer]);
 
-  const handleDelete = useCallback((id) => {
-    setCustomers(prev => prev.filter(c => c.id !== id));
-    if (drawer?.id === id) setDrawer(null);
-  }, [drawer]);
+  const handleDelete = useCallback(async (id) => {
+    try {
+      await removeCustomer(id);
+      if (drawer?.id === id) setDrawer(null);
+    } catch (err) {
+      setActionError(err.message ?? 'Could not delete this customer. Please try again.');
+    }
+  }, [removeCustomer, drawer]);
 
   const headerActions = (
     <>
@@ -210,190 +219,199 @@ export default function CustomersPage() {
 
       <main className="flex-1 px-4 sm:px-6 lg:px-8 py-5 sm:py-6 space-y-5">
 
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-          <StatCard icon={Users}      iconBg="bg-blue-100"   iconColor="text-blue-600"   label="Total"       value={stats.total}          sub={`${filtered.length} shown`} delay="0.05s" />
-          <StatCard icon={UserCheck}  iconBg="bg-green-100"  iconColor="text-green-600"  label="Active"      value={stats.active}         sub="Currently active" delay="0.10s" />
-          <StatCard icon={UserPlus}   iconBg="bg-purple-100" iconColor="text-purple-600" label="New Month"   value={stats.newMonth}       sub="Joined this month" delay="0.15s" />
-          <StatCard icon={TrendingUp} iconBg="bg-amber-100"  iconColor="text-amber-600"  label="Revenue"     value={naira(stats.revenue)} sub="All time" delay="0.20s" />
-        </div>
+        {loading && <LoadingState label="Loading customers..." />}
+        {!loading && error && <ErrorState message={error} onRetry={refetch} />}
 
-        {customers.some(c => c.status === 'owing') && (
-          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 animate-fade-up">
-            <div className="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <AlertCircle size={14} className="text-amber-600" />
+        {!loading && !error && (
+          <>
+            <ActionErrorBanner message={actionError} onDismiss={() => setActionError(null)} />
+
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+              <StatCard icon={Users}      iconBg="bg-blue-100"   iconColor="text-blue-600"   label="Total"       value={stats.total}          sub={`${filtered.length} shown`} delay="0.05s" />
+              <StatCard icon={UserCheck}  iconBg="bg-green-100"  iconColor="text-green-600"  label="Active"      value={stats.active}         sub="Currently active" delay="0.10s" />
+              <StatCard icon={UserPlus}   iconBg="bg-purple-100" iconColor="text-purple-600" label="New Month"   value={stats.newMonth}       sub="Joined this month" delay="0.15s" />
+              <StatCard icon={TrendingUp} iconBg="bg-amber-100"  iconColor="text-amber-600"  label="Revenue"     value={naira(stats.revenue)} sub="All time" delay="0.20s" />
             </div>
-            <p className="text-sm text-amber-800 font-medium flex-1">
-              <strong>{customers.filter(c => c.status === 'owing').length}</strong> customer{customers.filter(c => c.status === 'owing').length > 1 ? 's have' : ' has'} outstanding balances.
-            </p>
-            <button onClick={() => setStatus('Owing')}
-              className="text-xs font-bold text-amber-700 hover:text-amber-900 transition-colors flex-shrink-0">
-              View →
-            </button>
-          </div>
-        )}
 
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative flex-1 min-w-[180px] max-w-sm">
-              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search customers..."
-                className="w-full pl-10 pr-9 py-2.5 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all" />
-              {search && (
-                <button onClick={() => setSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
-                  <X size={14} />
+            {customers.some(c => c.status === 'owing') && (
+              <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 animate-fade-up">
+                <div className="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <AlertCircle size={14} className="text-amber-600" />
+                </div>
+                <p className="text-sm text-amber-800 font-medium flex-1">
+                  <strong>{customers.filter(c => c.status === 'owing').length}</strong> customer{customers.filter(c => c.status === 'owing').length > 1 ? 's have' : ' has'} outstanding balances.
+                </p>
+                <button onClick={() => setStatus('Owing')}
+                  className="text-xs font-bold text-amber-700 hover:text-amber-900 transition-colors flex-shrink-0">
+                  View →
                 </button>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative flex-1 min-w-[180px] max-w-sm">
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input value={search} onChange={e => setSearch(e.target.value)}
+                    placeholder="Search customers..."
+                    className="w-full pl-10 pr-9 py-2.5 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all" />
+                  {search && (
+                    <button onClick={() => setSearch('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <button onClick={() => setShowFilters(v => !v)}
+                  className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all
+                    ${showFilters ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                  <SlidersHorizontal size={14} />
+                  <span className="hidden sm:inline">Filter</span>
+                </button>
+                <span className="text-sm text-gray-400 font-medium ml-auto">
+                  <strong className="text-gray-700">{filtered.length}</strong>
+                  <span className="hidden sm:inline"> customers</span>
+                </span>
+                <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1">
+                  <button onClick={() => setViewMode('grid')}
+                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all
+                      ${viewMode === 'grid' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}>
+                    <LayoutGrid size={14} />
+                  </button>
+                  <button onClick={() => setViewMode('list')}
+                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all
+                      ${viewMode === 'list' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}>
+                    <List size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {showFilters && (
+                <div className="flex items-center gap-2 flex-wrap animate-fade-up">
+                  <div className="relative">
+                    <select value={typeFilter} onChange={e => setType(e.target.value)}
+                      className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none font-medium text-gray-600 cursor-pointer focus:border-green-400 transition-all">
+                      {customerTypes.map(t => <option key={t} value={t}>{t === 'All' ? 'All Types' : t}</option>)}
+                    </select>
+                    <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+                  <div className="relative">
+                    <select value={statusFilter} onChange={e => setStatus(e.target.value)}
+                      className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none font-medium text-gray-600 cursor-pointer focus:border-green-400 transition-all">
+                      {customerStatuses.map(s => <option key={s} value={s}>{s === 'All' ? 'All Status' : s}</option>)}
+                    </select>
+                    <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+                  {(typeFilter !== 'All' || statusFilter !== 'All' || search) && (
+                    <button onClick={() => { setSearch(''); setType('All'); setStatus('All'); }}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:text-red-700 px-2 py-1 transition-colors">
+                      <X size={12} /> Clear
+                    </button>
+                  )}
+                </div>
               )}
             </div>
-            <button onClick={() => setShowFilters(v => !v)}
-              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all
-                ${showFilters ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-              <SlidersHorizontal size={14} />
-              <span className="hidden sm:inline">Filter</span>
-            </button>
-            <span className="text-sm text-gray-400 font-medium ml-auto">
-              <strong className="text-gray-700">{filtered.length}</strong>
-              <span className="hidden sm:inline"> customers</span>
-            </span>
-            <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1">
-              <button onClick={() => setViewMode('grid')}
-                className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all
-                  ${viewMode === 'grid' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}>
-                <LayoutGrid size={14} />
-              </button>
-              <button onClick={() => setViewMode('list')}
-                className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all
-                  ${viewMode === 'list' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}>
-                <List size={14} />
-              </button>
-            </div>
-          </div>
 
-          {showFilters && (
-            <div className="flex items-center gap-2 flex-wrap animate-fade-up">
-              <div className="relative">
-                <select value={typeFilter} onChange={e => setType(e.target.value)}
-                  className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none font-medium text-gray-600 cursor-pointer focus:border-green-400 transition-all">
-                  {customerTypes.map(t => <option key={t} value={t}>{t === 'All' ? 'All Types' : t}</option>)}
-                </select>
-                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
-              <div className="relative">
-                <select value={statusFilter} onChange={e => setStatus(e.target.value)}
-                  className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none font-medium text-gray-600 cursor-pointer focus:border-green-400 transition-all">
-                  {customerStatuses.map(s => <option key={s} value={s}>{s === 'All' ? 'All Status' : s}</option>)}
-                </select>
-                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
-              {(typeFilter !== 'All' || statusFilter !== 'All' || search) && (
-                <button onClick={() => { setSearch(''); setType('All'); setStatus('All'); }}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:text-red-700 px-2 py-1 transition-colors">
-                  <X size={12} /> Clear
+            {filtered.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm text-center animate-fade-up">
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Users size={28} className="text-gray-400" />
+                </div>
+                <h3 className="text-base font-bold text-gray-700 mb-2">
+                  No customers found
+                </h3>
+                <p className="text-sm text-gray-400 mb-6 max-w-xs">
+                  {search ? `No results for "${search}".` : 'Add your first customer to get started.'}
+                </p>
+                <button onClick={openAdd}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 active:scale-95 transition-all">
+                  <Plus size={15} /> Add Customer
                 </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm text-center animate-fade-up">
-            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Users size={28} className="text-gray-400" />
-            </div>
-            <h3 className="text-base font-bold text-gray-700 mb-2">
-              No customers found
-            </h3>
-            <p className="text-sm text-gray-400 mb-6 max-w-xs">
-              {search ? `No results for "${search}".` : 'Add your first customer to get started.'}
-            </p>
-            <button onClick={openAdd}
-              className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 active:scale-95 transition-all">
-              <Plus size={15} /> Add Customer
-            </button>
-          </div>
-        )}
-
-        {filtered.length > 0 && viewMode === 'grid' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-            {filtered.map(c => (
-              <CustomerCard key={c.id} customer={c} onView={openView} onEdit={openEdit} onDelete={openDel} />
-            ))}
-            <button onClick={openAdd}
-              className="border-2 border-dashed border-gray-200 rounded-2xl p-5 flex flex-col items-center justify-center gap-3 text-gray-400 hover:border-green-300 hover:text-green-600 hover:bg-green-50/50 transition-all min-h-[180px] group">
-              <div className="w-11 h-11 rounded-xl bg-gray-100 group-hover:bg-green-100 flex items-center justify-center transition-all">
-                <Plus size={20} />
               </div>
-              <p className="text-sm font-bold">Add Customer</p>
-            </button>
-          </div>
-        )}
+            )}
 
-        {filtered.length > 0 && viewMode === 'list' && (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden animate-fade-up">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px]">
-                <thead className="bg-gray-50/80 border-b border-gray-100">
-                  <tr>
-                    {['Customer', 'Type', 'Contact', 'Location', 'Spent', 'Orders', 'Status', 'Actions'].map(h => (
-                      <th key={h} className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 px-4 py-3">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map(c => (
-                    <tr key={c.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors group">
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0"
-                            style={{ background: c.color, color: c.textColor }}>
-                            {c.initials}
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-gray-800">{c.firstName} {c.lastName}</p>
-                            <p className="text-[10px] text-gray-400">Since {fmtDate(c.joinDate)}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md">{c.type}</span>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <p className="text-xs font-medium text-gray-700">{c.phone}</p>
-                        {c.email && <p className="text-[10px] text-gray-400 truncate max-w-[140px]">{c.email}</p>}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-1 text-xs text-gray-500">
-                          <MapPin size={11} className="text-gray-400" /> {c.location}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span className="text-sm font-extrabold text-green-600 tabular-nums">{naira(c.totalSpent)}</span>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span className="text-sm font-bold text-gray-800">{c.totalOrders}</span>
-                      </td>
-                      <td className="px-4 py-3.5"><StatusBadge status={c.status} /></td>
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-1.5 opacity-50 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => openView(c)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-green-50 hover:border-green-200 hover:text-green-600 text-gray-400 transition-all"><Eye size={12} /></button>
-                          <button onClick={() => openEdit(c)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 text-gray-400 transition-all"><Edit2 size={12} /></button>
-                          <button onClick={() => openDel(c)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-500 text-gray-400 transition-all"><Trash2 size={12} /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+            {filtered.length > 0 && viewMode === 'grid' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+                {filtered.map(c => (
+                  <CustomerCard key={c.id} customer={c} onView={openView} onEdit={openEdit} onDelete={openDel} />
+                ))}
+                <button onClick={openAdd}
+                  className="border-2 border-dashed border-gray-200 rounded-2xl p-5 flex flex-col items-center justify-center gap-3 text-gray-400 hover:border-green-300 hover:text-green-600 hover:bg-green-50/50 transition-all min-h-[180px] group">
+                  <div className="w-11 h-11 rounded-xl bg-gray-100 group-hover:bg-green-100 flex items-center justify-center transition-all">
+                    <Plus size={20} />
+                  </div>
+                  <p className="text-sm font-bold">Add Customer</p>
+                </button>
+              </div>
+            )}
 
-        {filtered.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
-            <span>Showing <strong className="text-gray-700">{filtered.length}</strong> of {customers.length} customers</span>
-            <span className="hidden sm:block">Combined revenue: <strong className="text-green-600">{naira(filtered.reduce((s, c) => s + c.totalSpent, 0))}</strong></span>
-          </div>
+            {filtered.length > 0 && viewMode === 'list' && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden animate-fade-up">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px]">
+                    <thead className="bg-gray-50/80 border-b border-gray-100">
+                      <tr>
+                        {['Customer', 'Type', 'Contact', 'Location', 'Spent', 'Orders', 'Status', 'Actions'].map(h => (
+                          <th key={h} className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 px-4 py-3">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(c => (
+                        <tr key={c.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors group">
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0"
+                                style={{ background: c.color, color: c.textColor }}>
+                                {c.initials}
+                              </div>
+                              <div>
+                                <p className="text-sm font-bold text-gray-800">{c.firstName} {c.lastName}</p>
+                                <p className="text-[10px] text-gray-400">Since {fmtDate(c.joinDate)}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md">{c.type}</span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <p className="text-xs font-medium text-gray-700">{c.phone}</p>
+                            {c.email && <p className="text-[10px] text-gray-400 truncate max-w-[140px]">{c.email}</p>}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                              <MapPin size={11} className="text-gray-400" /> {c.location}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className="text-sm font-extrabold text-green-600 tabular-nums">{naira(c.totalSpent)}</span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className="text-sm font-bold text-gray-800">{c.totalOrders}</span>
+                          </td>
+                          <td className="px-4 py-3.5"><StatusBadge status={c.status} /></td>
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-1.5 opacity-50 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => openView(c)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-green-50 hover:border-green-200 hover:text-green-600 text-gray-400 transition-all"><Eye size={12} /></button>
+                              <button onClick={() => openEdit(c)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 text-gray-400 transition-all"><Edit2 size={12} /></button>
+                              <button onClick={() => openDel(c)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-500 text-gray-400 transition-all"><Trash2 size={12} /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {filtered.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
+                <span>Showing <strong className="text-gray-700">{filtered.length}</strong> of {customers.length} customers</span>
+                <span className="hidden sm:block">Combined revenue: <strong className="text-green-600">{naira(filtered.reduce((s, c) => s + c.totalSpent, 0))}</strong></span>
+              </div>
+            )}
+          </>
         )}
       </main>
 

@@ -1,5 +1,5 @@
 // src/pages/ReportsPage.jsx
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Download, TrendingUp, TrendingDown, ShoppingBag,
   Package, Users, Receipt, DollarSign, Target,
@@ -11,21 +11,22 @@ import {
   Tooltip, ResponsiveContainer,
 } from 'recharts';
 import TopBar from '../components/layout/TopBar';
+import LoadingState from '../components/ui/LoadingState';
+import ErrorState from '../components/ui/ErrorState';
 import {
   salesTrendData, paymentBreakdown, topProductsReport,
   inventoryCategoryReport, customerAcquisitionData,
   customerTypeBreakdown, expenseTrend, expenseCategoryReport,
-  customersData, inventoryItems,
 } from '../data/mockData';
+import { useCustomers } from '../hooks/useCustomers';
+import { useInventory } from '../hooks/useInventory';
 
-// ── Helpers ──────────────────────────────────────
 const naira = (v) => {
   if (v >= 1000000) return `₦${(v / 1000000).toFixed(1)}M`;
   if (v >= 1000)    return `₦${(v / 1000).toFixed(0)}K`;
   return `₦${v}`;
 };
 
-// ── Shared tooltip ────────────────────────────────
 function ChartTip({ active, payload, label, isCurrency }) {
   if (!active || !payload?.length) return null;
   return (
@@ -53,7 +54,6 @@ function DonutTip({ active, payload }) {
   );
 }
 
-// ── Tab config ────────────────────────────────────
 const tabs = [
   { id: 'sales',     label: 'Sales',     icon: ShoppingBag, activeBg: 'bg-green-600'  },
   { id: 'inventory', label: 'Inventory', icon: Package,     activeBg: 'bg-blue-600'   },
@@ -68,7 +68,6 @@ const periods = [
   { id: 'year',    label: 'This Year'   },
 ];
 
-// ── Section card ──────────────────────────────────
 function ReportCard({ title, subtitle, children }) {
   return (
     <div className="bg-white rounded-2xl p-5 sm:p-6 border border-gray-100 shadow-sm">
@@ -79,7 +78,6 @@ function ReportCard({ title, subtitle, children }) {
   );
 }
 
-// ── KPI pill ──────────────────────────────────────
 function KpiPill({ value, label, color, bg }) {
   return (
     <div className={`${bg} rounded-xl p-3 sm:p-4 text-center`}>
@@ -89,15 +87,16 @@ function KpiPill({ value, label, color, bg }) {
   );
 }
 
-// ── Health Banner ─────────────────────────────────
-function HealthBanner() {
+function HealthBanner({ customers, inventoryItems }) {
   const totalRevenue  = salesTrendData.reduce((s, m) => s + m.revenue, 0);
   const totalProfit   = salesTrendData.reduce((s, m) => s + m.profit, 0);
   const totalExpenses = expenseTrend.reduce((s, m) => s + m.amount, 0);
   const totalOrders   = salesTrendData.reduce((s, m) => s + m.orders, 0);
   const profitMargin  = ((totalProfit / totalRevenue) * 100).toFixed(1);
   const avgOrderVal   = Math.round(totalRevenue / totalOrders);
-  const avgLTV        = Math.round(customersData.reduce((s, c) => s + c.totalSpent, 0) / customersData.length);
+  const avgLTV        = customers.length
+    ? Math.round(customers.reduce((s, c) => s + c.totalSpent, 0) / customers.length)
+    : 0;
   const outOfStock    = inventoryItems.filter(i => i.stock === 0).length;
 
   const kpis = [
@@ -158,7 +157,6 @@ function HealthBanner() {
   );
 }
 
-// ── Sales Report ──────────────────────────────────
 function SalesReport() {
   const totals = {
     revenue: salesTrendData.reduce((s, m) => s + m.revenue, 0),
@@ -271,7 +269,6 @@ function SalesReport() {
   );
 }
 
-// ── Inventory Report ──────────────────────────────
 function InventoryReport() {
   const totalItems = inventoryCategoryReport.reduce((s, c) => s + c.items, 0);
   const totalValue = inventoryCategoryReport.reduce((s, c) => s + c.value, 0);
@@ -343,16 +340,17 @@ function InventoryReport() {
   );
 }
 
-// ── Customer Report ───────────────────────────────
-function CustomerReport() {
-  const topCustomers = [...customersData].sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 5);
-  const totalRevenue = customersData.reduce((s, c) => s + c.totalSpent, 0);
-  const avgLTV       = Math.round(totalRevenue / customersData.length);
-  const retention    = Math.round((customersData.filter(c => c.totalOrders > 1).length / customersData.length) * 100);
+function CustomerReport({ customers }) {
+  const topCustomers = [...customers].sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 5);
+  const totalRevenue = customers.reduce((s, c) => s + c.totalSpent, 0);
+  const avgLTV       = customers.length ? Math.round(totalRevenue / customers.length) : 0;
+  const retention    = customers.length
+    ? Math.round((customers.filter(c => c.totalOrders > 1).length / customers.length) * 100)
+    : 0;
   return (
     <div className="space-y-4 sm:space-y-5">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiPill value={customersData.length} label="Total Customers"  color="text-blue-600"   bg="bg-blue-50"   />
+        <KpiPill value={customers.length} label="Total Customers"  color="text-blue-600"   bg="bg-blue-50"   />
         <KpiPill value={naira(totalRevenue)}  label="Total Revenue"    color="text-green-600"  bg="bg-green-50"  />
         <KpiPill value={naira(avgLTV)}        label="Avg. Lifetime Val" color="text-purple-600" bg="bg-purple-50" />
         <KpiPill value={`${retention}%`}     label="Retention Rate"   color="text-amber-600"  bg="bg-amber-50"  />
@@ -443,7 +441,6 @@ function CustomerReport() {
   );
 }
 
-// ── Expenses Report ───────────────────────────────
 function ExpensesReport() {
   const total       = expenseCategoryReport.reduce((s, c) => s + c.amount, 0);
   const profitMargin = (((2400000 - total) / 2400000) * 100).toFixed(1);
@@ -516,10 +513,19 @@ function ExpensesReport() {
   );
 }
 
-// ── Main Page ─────────────────────────────────────
 export default function ReportsPage() {
+  const { customers, loading: customersLoading, error: customersError, refetch: refetchCustomers } = useCustomers();
+  const { items, loading: itemsLoading, error: itemsError, refetch: refetchItems } = useInventory();
   const [activeTab, setActiveTab] = useState('sales');
   const [period, setPeriod]       = useState('month');
+
+  const loading = customersLoading || itemsLoading;
+  const error   = customersError || itemsError;
+
+  const refetchAll = useCallback(() => {
+    refetchCustomers();
+    refetchItems();
+  }, [refetchCustomers, refetchItems]);
 
   const headerActions = (
     <>
@@ -543,35 +549,42 @@ export default function ReportsPage() {
       <TopBar title="Reports" subtitle="Detailed business performance insights" actions={headerActions} />
 
       <main className="flex-1 px-4 sm:px-6 lg:px-8 py-5 sm:py-6">
-        <HealthBanner />
 
-        {/* Tabs */}
-        <div className="flex items-center gap-2 mb-5 sm:mb-6 overflow-x-auto pb-1">
-          {tabs.map(tab => {
-            const Icon    = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all flex-shrink-0
-                  ${isActive
-                    ? `${tab.activeBg} text-white shadow-md shadow-black/10`
-                    : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700'
-                  }`}>
-                <Icon size={15} />
-                {tab.label}
-              </button>
-            );
-          })}
-          <div className="ml-auto flex items-center gap-2 text-xs text-gray-400 bg-white border border-gray-200 rounded-xl px-3 py-2 flex-shrink-0">
-            <div size={12} />
-            <span className="font-medium hidden sm:block">{periods.find(p => p.id === period)?.label}</span>
-          </div>
-        </div>
+        {loading && <LoadingState label="Loading reports..." />}
+        {!loading && error && <ErrorState message={error} onRetry={refetchAll} />}
 
-        {activeTab === 'sales'     && <SalesReport     />}
-        {activeTab === 'inventory' && <InventoryReport />}
-        {activeTab === 'customers' && <CustomerReport  />}
-        {activeTab === 'expenses'  && <ExpensesReport  />}
+        {!loading && !error && (
+          <>
+            <HealthBanner customers={customers} inventoryItems={items} />
+
+            <div className="flex items-center gap-2 mb-5 sm:mb-6 overflow-x-auto pb-1">
+              {tabs.map(tab => {
+                const Icon    = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all flex-shrink-0
+                      ${isActive
+                        ? `${tab.activeBg} text-white shadow-md shadow-black/10`
+                        : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700'
+                      }`}>
+                    <Icon size={15} />
+                    {tab.label}
+                  </button>
+                );
+              })}
+              <div className="ml-auto flex items-center gap-2 text-xs text-gray-400 bg-white border border-gray-200 rounded-xl px-3 py-2 flex-shrink-0">
+                <div size={12} />
+                <span className="font-medium hidden sm:block">{periods.find(p => p.id === period)?.label}</span>
+              </div>
+            </div>
+
+            {activeTab === 'sales'     && <SalesReport     />}
+            {activeTab === 'inventory' && <InventoryReport />}
+            {activeTab === 'customers' && <CustomerReport customers={customers} />}
+            {activeTab === 'expenses'  && <ExpensesReport  />}
+          </>
+        )}
       </main>
     </div>
   );

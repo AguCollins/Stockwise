@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Bell, Search, Menu, X, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
-const notifications = [
+const initialNotifications = [
   { id: 1, title: 'Low Stock Alert',     body: 'Sun Hat is down to 3 units',       time: '5m ago',  unread: true,  color: 'bg-amber-500' },
   { id: 2, title: 'New Sale Recorded',   body: 'Chidinma Eze — ₦23,500',           time: '32m ago', unread: true,  color: 'bg-green-500' },
   { id: 3, title: 'Order Delivered',     body: 'PO-024 from Lagos Fashion Hub',     time: '2h ago',  unread: false, color: 'bg-blue-500'  },
@@ -12,6 +12,7 @@ const notifications = [
 
 export default function TopBar({ title, subtitle, actions }) {
   const { user } = useAuth();
+  const [notifications, setNotifications] = useState(initialNotifications);
   const [showNotif,  setShowNotif]  = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [mobileMenuOpen, setMobileMenu] = useState(false);
@@ -27,6 +28,17 @@ export default function TopBar({ title, subtitle, actions }) {
     if (h < 12) return 'Good morning';
     if (h < 17) return 'Good afternoon';
     return 'Good evening';
+  };
+
+  const handleMarkAllRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
+  };
+
+  const handleViewAll = () => {
+    // No dedicated notifications route exists yet. The panel already
+    // shows the full list, so "View all" closes the panel rather than
+    // navigating. Revisit once a /notifications page exists.
+    setShowNotif(false);
   };
 
   return (
@@ -90,9 +102,13 @@ export default function TopBar({ title, subtitle, actions }) {
                       <p className="text-sm font-bold text-gray-900">
                         Notifications
                       </p>
-                      <span className="text-xs font-semibold text-green-600 cursor-pointer hover:underline">
+                      <button
+                        type="button"
+                        onClick={handleMarkAllRead}
+                        disabled={unreadCount === 0}
+                        className="text-xs font-semibold text-green-600 hover:underline disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed">
                         Mark all read
-                      </span>
+                      </button>
                     </div>
                     <div className="divide-y divide-gray-50 max-h-72 overflow-y-auto">
                       {notifications.map(n => (
@@ -109,9 +125,12 @@ export default function TopBar({ title, subtitle, actions }) {
                       ))}
                     </div>
                     <div className="px-4 py-3 border-t border-gray-100 text-center">
-                      <span className="text-xs font-semibold text-green-600 cursor-pointer hover:underline">
+                      <button
+                        type="button"
+                        onClick={handleViewAll}
+                        className="text-xs font-semibold text-green-600 hover:underline">
                         View all notifications
-                      </span>
+                      </button>
                     </div>
                   </div>
                 </>

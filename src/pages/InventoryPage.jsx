@@ -10,8 +10,12 @@ import {
 import TopBar     from '../components/layout/TopBar';
 import ItemModal  from '../components/inventory/ItemModal';
 import DeleteModal from '../components/inventory/DeleteModal';
+import LoadingState from '../components/ui/LoadingState';
+import ErrorState from '../components/ui/ErrorState';
+import ActionErrorBanner from '../components/ui/ActionErrorBanner';
 import { ItemIcon } from '../utils/inventoryIcons';
-import { inventoryItems as initialItems, categories } from '../data/mockData';
+import { categories } from '../data/mockData';
+import { useInventory } from '../hooks/useInventory';
 
 const naira = (v) => `₦${Number(v).toLocaleString()}`;
 
@@ -153,7 +157,7 @@ function SortTh({ col, label, sortBy, onSort }) {
 }
 
 export default function InventoryPage() {
-  const [items, setItems]           = useState(initialItems);
+  const { items, loading, error, refetch, saveItem, removeItem } = useInventory();
   const [search, setSearch]         = useState('');
   const [activeCategory, setCategory] = useState('All');
   const [statusFilter, setStatus]   = useState('All');
@@ -165,6 +169,7 @@ export default function InventoryPage() {
   const [deleteModal, setDeleteModal] = useState({ open: false, item: null });
   const [selected, setSelected]     = useState(new Set());
   const [showFilters, setShowFilters] = useState(false);
+  const [actionError, setActionError] = useState(null);
 
   const stats = useMemo(() => ({
     inStock:    items.filter(i => getStatus(i) === 'ok').length,
@@ -204,18 +209,22 @@ export default function InventoryPage() {
   const openEdit = useCallback((item) => { setEditItem(item); setModalOpen(true); }, []);
   const openDel  = useCallback((item) => setDeleteModal({ open: true, item }), []);
 
-  const handleSave = useCallback((saved) => {
-    setItems(prev =>
-      prev.some(i => i.id === saved.id)
-        ? prev.map(i => i.id === saved.id ? saved : i)
-        : [...prev, saved]
-    );
-  }, []);
+  const handleSave = useCallback(async (saved) => {
+    try {
+      await saveItem(saved, !!editItem);
+    } catch (err) {
+      setActionError(err.message ?? 'Could not save this item. Please try again.');
+    }
+  }, [saveItem, editItem]);
 
-  const handleDelete = useCallback((id) => {
-    setItems(prev => prev.filter(i => i.id !== id));
-    setSelected(prev => { const s = new Set(prev); s.delete(id); return s; });
-  }, []);
+  const handleDelete = useCallback(async (id) => {
+    try {
+      await removeItem(id);
+      setSelected(prev => { const s = new Set(prev); s.delete(id); return s; });
+    } catch (err) {
+      setActionError(err.message ?? 'Could not delete this item. Please try again.');
+    }
+  }, [removeItem]);
 
   const toggleSelect = useCallback((id) => {
     setSelected(prev => {
@@ -261,293 +270,302 @@ export default function InventoryPage() {
 
       <main className="flex-1 px-4 sm:px-6 lg:px-8 py-5 sm:py-6 space-y-5">
 
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-          <MiniStat icon={CheckCircle} iconBg="bg-green-100" iconColor="text-green-600"
-            label="In Stock" value={stats.inStock} animDelay="0.05s" />
-          <MiniStat icon={AlertTriangle} iconBg="bg-amber-100" iconColor="text-amber-600"
-            label="Low Stock" value={stats.lowStock} animDelay="0.10s" />
-          <MiniStat icon={XCircle} iconBg="bg-red-100" iconColor="text-red-500"
-            label="Out of Stock" value={stats.outOfStock} animDelay="0.15s" />
-          <MiniStat icon={Gem} iconBg="bg-blue-100" iconColor="text-blue-600"
-            label="Inventory Value"
-            value={stats.totalValue >= 1000000
-              ? `₦${(stats.totalValue / 1000000).toFixed(1)}M`
-              : `₦${(stats.totalValue / 1000).toFixed(0)}K`}
-            animDelay="0.20s"
-          />
-        </div>
+        {loading && <LoadingState label="Loading inventory..." />}
+        {!loading && error && <ErrorState message={error} onRetry={refetch} />}
 
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-          {categories.map(cat => {
-            const count = cat === 'All' ? items.length : items.filter(i => i.category === cat).length;
-            return (
-              <button key={cat} onClick={() => setCategory(cat)}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all flex-shrink-0
-                  ${activeCategory === cat
-                    ? 'bg-green-600 text-white shadow-sm'
-                    : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300'
-                  }`}>
-                {cat}
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold
-                  ${activeCategory === cat ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        {!loading && !error && (
+          <>
+            <ActionErrorBanner message={actionError} onDismiss={() => setActionError(null)} />
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative flex-1 min-w-[180px] max-w-sm">
-            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name, SKU..."
-              className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all" />
-            {search && (
-              <button onClick={() => setSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
-                <X size={14} />
-              </button>
-            )}
-          </div>
-
-          <button onClick={() => setShowFilters(v => !v)}
-            className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all
-              ${showFilters ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-            <SlidersHorizontal size={14} />
-            <span className="hidden sm:inline">Filter</span>
-          </button>
-
-          <div className={`${showFilters ? 'flex' : 'hidden sm:flex'} items-center gap-2`}>
-            <div className="relative">
-              <select value={statusFilter} onChange={e => setStatus(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-2.5 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-green-400 transition-all font-medium text-gray-600 cursor-pointer">
-                <option value="All">All Status</option>
-                <option value="ok">In Stock</option>
-                <option value="low">Low Stock</option>
-                <option value="out">Out of Stock</option>
-              </select>
-              <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            </div>
-          </div>
-
-          {selected.size > 0 && (
-            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2 animate-fade-in">
-              <span className="text-xs font-bold text-red-700">{selected.size} selected</span>
-              <button onClick={() => setSelected(new Set())}
-                className="text-xs font-semibold text-red-600 hover:text-red-800 underline">
-                Clear
-              </button>
-            </div>
-          )}
-
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-sm text-gray-400 font-medium hidden sm:block">
-              <strong className="text-gray-700">{filtered.length}</strong> / {items.length}
-            </span>
-            <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1">
-              <button onClick={() => setViewMode('table')}
-                className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all
-                  ${viewMode === 'table' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}>
-                <LayoutList size={14} />
-              </button>
-              <button onClick={() => setViewMode('cards')}
-                className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all
-                  ${viewMode === 'cards' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}>
-                <LayoutGrid size={14} />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm text-center animate-fade-up">
-            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Package size={28} className="text-gray-400" />
-            </div>
-            <h3 className="text-base font-bold text-gray-700 mb-2">
-              No items found
-            </h3>
-            <p className="text-sm text-gray-400 mb-6 max-w-xs">
-              {search
-                ? `No results for "${search}". Try a different search term.`
-                : 'Add your first inventory item to get started.'}
-            </p>
-            <button onClick={openAdd}
-              className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 active:scale-95 transition-all">
-              <Plus size={15} /> Add First Item
-            </button>
-          </div>
-        )}
-
-        {filtered.length > 0 && viewMode === 'cards' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {filtered.map(item => (
-              <ItemCard
-                key={item.id}
-                item={item}
-                onEdit={openEdit}
-                onDelete={openDel}
-                selected={selected.has(item.id)}
-                onSelect={toggleSelect}
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+              <MiniStat icon={CheckCircle} iconBg="bg-green-100" iconColor="text-green-600"
+                label="In Stock" value={stats.inStock} animDelay="0.05s" />
+              <MiniStat icon={AlertTriangle} iconBg="bg-amber-100" iconColor="text-amber-600"
+                label="Low Stock" value={stats.lowStock} animDelay="0.10s" />
+              <MiniStat icon={XCircle} iconBg="bg-red-100" iconColor="text-red-500"
+                label="Out of Stock" value={stats.outOfStock} animDelay="0.15s" />
+              <MiniStat icon={Gem} iconBg="bg-blue-100" iconColor="text-blue-600"
+                label="Inventory Value"
+                value={stats.totalValue >= 1000000
+                  ? `₦${(stats.totalValue / 1000000).toFixed(1)}M`
+                  : `₦${(stats.totalValue / 1000).toFixed(0)}K`}
+                animDelay="0.20s"
               />
-            ))}
-          </div>
-        )}
-
-        {filtered.length > 0 && viewMode === 'table' && (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden animate-fade-up">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px]">
-                <thead className="bg-gray-50/80 border-b border-gray-100 sticky top-0 z-10">
-                  <tr>
-                    <th className="px-4 py-3 w-10">
-                      <button onClick={toggleSelectAll}
-                        className={`w-4.5 h-4.5 rounded border-2 flex items-center justify-center transition-all
-                          ${selected.size === filtered.length && filtered.length > 0
-                            ? 'bg-green-600 border-green-600'
-                            : 'border-gray-300 hover:border-green-400'}`}>
-                        {selected.size === filtered.length && filtered.length > 0 && (
-                          <CheckCircle size={10} className="text-white" />
-                        )}
-                      </button>
-                    </th>
-                    <SortTh col="name"         label="Product"       sortBy={sortBy} onSort={toggleSort} />
-                    <SortTh col="sku"          label="SKU"           sortBy={sortBy} onSort={toggleSort} />
-                    <SortTh col="category"     label="Category"      sortBy={sortBy} onSort={toggleSort} />
-                    <SortTh col="stock"        label="Stock"         sortBy={sortBy} onSort={toggleSort} />
-                    <SortTh col="costPrice"    label="Cost"          sortBy={sortBy} onSort={toggleSort} />
-                    <SortTh col="sellingPrice" label="Selling"       sortBy={sortBy} onSort={toggleSort} />
-                    <th className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 px-4 py-3">Margin</th>
-                    <th className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 px-4 py-3">Status</th>
-                    <th className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 px-4 py-3">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map(item => {
-                    const status    = getStatus(item);
-                    const isSelected = selected.has(item.id);
-
-                    return (
-                      <tr key={item.id}
-                        className={`border-b border-gray-50 last:border-0 transition-colors group
-                          ${isSelected ? 'bg-green-50/40' : 'hover:bg-gray-50/50'}`}>
-
-                        <td className="px-4 py-3.5">
-                          <button onClick={() => toggleSelect(item.id)}
-                            className={`w-4.5 h-4.5 rounded border-2 flex items-center justify-center transition-all
-                              ${isSelected ? 'bg-green-600 border-green-600' : 'border-gray-300 hover:border-green-400'}`}>
-                            {isSelected && <CheckCircle size={10} className="text-white" />}
-                          </button>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-3">
-                            <ItemIcon iconName={item.iconName} bg={item.bg} size={17} className="w-9 h-9" />
-                            <div>
-                              <p className="text-sm font-semibold text-gray-800 leading-tight">{item.name}</p>
-                              <p className="text-[11px] text-gray-400">
-                                {formatDate(item.lastRestocked)}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <span className="text-[11px] font-mono font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">
-                            {item.sku}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg">
-                            {item.category}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className={`text-sm font-bold
-                                ${status === 'out' ? 'text-red-600'
-                                : status === 'low' ? 'text-amber-600'
-                                : 'text-gray-900'}`}>
-                                {item.stock}
-                              </span>
-                              <span className="text-[10px] text-gray-400">/ {item.threshold}</span>
-                            </div>
-                            <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all
-                                  ${status === 'out' ? 'bg-red-400'
-                                  : status === 'low' ? 'bg-amber-400'
-                                  : 'bg-green-500'}`}
-                                style={{ width: `${Math.min((item.stock / (item.threshold * 2)) * 100, 100)}%` }}
-                              />
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <span className="text-sm text-gray-600 font-medium">{naira(item.costPrice)}</span>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <span className="text-sm font-bold text-green-600">{naira(item.sellingPrice)}</span>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <MarginBadge cost={item.costPrice} sell={item.sellingPrice} />
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <StatusBadge status={status} />
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-1.5 opacity-50 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => openEdit(item)}
-                              className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 text-gray-400 transition-all"
-                              title="Edit item">
-                              <Edit2 size={12} />
-                            </button>
-                            <button onClick={() => openDel(item)}
-                              className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-500 text-gray-400 transition-all"
-                              title="Delete item">
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
             </div>
-          </div>
-        )}
 
-        {filtered.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
-            <span>
-              Showing <strong className="text-gray-700">{filtered.length}</strong> of {items.length} items
-              {activeCategory !== 'All' && ` in ${activeCategory}`}
-            </span>
-            <span>
-              Selected value:{' '}
-              <strong className="text-gray-700">
-                {naira(filtered
-                  .filter(i => selected.has(i.id))
-                  .reduce((s, i) => s + i.stock * i.costPrice, 0)
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+              {categories.map(cat => {
+                const count = cat === 'All' ? items.length : items.filter(i => i.category === cat).length;
+                return (
+                  <button key={cat} onClick={() => setCategory(cat)}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all flex-shrink-0
+                      ${activeCategory === cat
+                        ? 'bg-green-600 text-white shadow-sm'
+                        : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300'
+                      }`}>
+                    {cat}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold
+                      ${activeCategory === cat ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative flex-1 min-w-[180px] max-w-sm">
+                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Search by name, SKU..."
+                  className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all" />
+                {search && (
+                  <button onClick={() => setSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                    <X size={14} />
+                  </button>
                 )}
-              </strong>
-              {' · '}
-              Filtered stock value:{' '}
-              <strong className="text-green-600">
-                {naira(filtered.reduce((s, i) => s + i.stock * i.costPrice, 0))}
-              </strong>
-            </span>
-          </div>
+              </div>
+
+              <button onClick={() => setShowFilters(v => !v)}
+                className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all
+                  ${showFilters ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                <SlidersHorizontal size={14} />
+                <span className="hidden sm:inline">Filter</span>
+              </button>
+
+              <div className={`${showFilters ? 'flex' : 'hidden sm:flex'} items-center gap-2`}>
+                <div className="relative">
+                  <select value={statusFilter} onChange={e => setStatus(e.target.value)}
+                    className="appearance-none pl-3 pr-8 py-2.5 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-green-400 transition-all font-medium text-gray-600 cursor-pointer">
+                    <option value="All">All Status</option>
+                    <option value="ok">In Stock</option>
+                    <option value="low">Low Stock</option>
+                    <option value="out">Out of Stock</option>
+                  </select>
+                  <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+
+              {selected.size > 0 && (
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2 animate-fade-in">
+                  <span className="text-xs font-bold text-red-700">{selected.size} selected</span>
+                  <button onClick={() => setSelected(new Set())}
+                    className="text-xs font-semibold text-red-600 hover:text-red-800 underline">
+                    Clear
+                  </button>
+                </div>
+              )}
+
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-sm text-gray-400 font-medium hidden sm:block">
+                  <strong className="text-gray-700">{filtered.length}</strong> / {items.length}
+                </span>
+                <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1">
+                  <button onClick={() => setViewMode('table')}
+                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all
+                      ${viewMode === 'table' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}>
+                    <LayoutList size={14} />
+                  </button>
+                  <button onClick={() => setViewMode('cards')}
+                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all
+                      ${viewMode === 'cards' ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}>
+                    <LayoutGrid size={14} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {filtered.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm text-center animate-fade-up">
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Package size={28} className="text-gray-400" />
+                </div>
+                <h3 className="text-base font-bold text-gray-700 mb-2">
+                  No items found
+                </h3>
+                <p className="text-sm text-gray-400 mb-6 max-w-xs">
+                  {search
+                    ? `No results for "${search}". Try a different search term.`
+                    : 'Add your first inventory item to get started.'}
+                </p>
+                <button onClick={openAdd}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 active:scale-95 transition-all">
+                  <Plus size={15} /> Add First Item
+                </button>
+              </div>
+            )}
+
+            {filtered.length > 0 && viewMode === 'cards' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                {filtered.map(item => (
+                  <ItemCard
+                    key={item.id}
+                    item={item}
+                    onEdit={openEdit}
+                    onDelete={openDel}
+                    selected={selected.has(item.id)}
+                    onSelect={toggleSelect}
+                  />
+                ))}
+              </div>
+            )}
+
+            {filtered.length > 0 && viewMode === 'table' && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden animate-fade-up">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[700px]">
+                    <thead className="bg-gray-50/80 border-b border-gray-100 sticky top-0 z-10">
+                      <tr>
+                        <th className="px-4 py-3 w-10">
+                          <button onClick={toggleSelectAll}
+                            className={`w-4.5 h-4.5 rounded border-2 flex items-center justify-center transition-all
+                              ${selected.size === filtered.length && filtered.length > 0
+                                ? 'bg-green-600 border-green-600'
+                                : 'border-gray-300 hover:border-green-400'}`}>
+                            {selected.size === filtered.length && filtered.length > 0 && (
+                              <CheckCircle size={10} className="text-white" />
+                            )}
+                          </button>
+                        </th>
+                        <SortTh col="name"         label="Product"       sortBy={sortBy} onSort={toggleSort} />
+                        <SortTh col="sku"          label="SKU"           sortBy={sortBy} onSort={toggleSort} />
+                        <SortTh col="category"     label="Category"      sortBy={sortBy} onSort={toggleSort} />
+                        <SortTh col="stock"        label="Stock"         sortBy={sortBy} onSort={toggleSort} />
+                        <SortTh col="costPrice"    label="Cost"          sortBy={sortBy} onSort={toggleSort} />
+                        <SortTh col="sellingPrice" label="Selling"       sortBy={sortBy} onSort={toggleSort} />
+                        <th className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 px-4 py-3">Margin</th>
+                        <th className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 px-4 py-3">Status</th>
+                        <th className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 px-4 py-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(item => {
+                        const status    = getStatus(item);
+                        const isSelected = selected.has(item.id);
+
+                        return (
+                          <tr key={item.id}
+                            className={`border-b border-gray-50 last:border-0 transition-colors group
+                              ${isSelected ? 'bg-green-50/40' : 'hover:bg-gray-50/50'}`}>
+
+                            <td className="px-4 py-3.5">
+                              <button onClick={() => toggleSelect(item.id)}
+                                className={`w-4.5 h-4.5 rounded border-2 flex items-center justify-center transition-all
+                                  ${isSelected ? 'bg-green-600 border-green-600' : 'border-gray-300 hover:border-green-400'}`}>
+                                {isSelected && <CheckCircle size={10} className="text-white" />}
+                              </button>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-3">
+                                <ItemIcon iconName={item.iconName} bg={item.bg} size={17} className="w-9 h-9" />
+                                <div>
+                                  <p className="text-sm font-semibold text-gray-800 leading-tight">{item.name}</p>
+                                  <p className="text-[11px] text-gray-400">
+                                    {formatDate(item.lastRestocked)}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <span className="text-[11px] font-mono font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">
+                                {item.sku}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg">
+                                {item.category}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`text-sm font-bold
+                                    ${status === 'out' ? 'text-red-600'
+                                    : status === 'low' ? 'text-amber-600'
+                                    : 'text-gray-900'}`}>
+                                    {item.stock}
+                                  </span>
+                                  <span className="text-[10px] text-gray-400">/ {item.threshold}</span>
+                                </div>
+                                <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all
+                                      ${status === 'out' ? 'bg-red-400'
+                                      : status === 'low' ? 'bg-amber-400'
+                                      : 'bg-green-500'}`}
+                                    style={{ width: `${Math.min((item.stock / (item.threshold * 2)) * 100, 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <span className="text-sm text-gray-600 font-medium">{naira(item.costPrice)}</span>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <span className="text-sm font-bold text-green-600">{naira(item.sellingPrice)}</span>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <MarginBadge cost={item.costPrice} sell={item.sellingPrice} />
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <StatusBadge status={status} />
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-1.5 opacity-50 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => openEdit(item)}
+                                  className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 text-gray-400 transition-all"
+                                  title="Edit item">
+                                  <Edit2 size={12} />
+                                </button>
+                                <button onClick={() => openDel(item)}
+                                  className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-500 text-gray-400 transition-all"
+                                  title="Delete item">
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {filtered.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
+                <span>
+                  Showing <strong className="text-gray-700">{filtered.length}</strong> of {items.length} items
+                  {activeCategory !== 'All' && ` in ${activeCategory}`}
+                </span>
+                <span>
+                  Selected value:{' '}
+                  <strong className="text-gray-700">
+                    {naira(filtered
+                      .filter(i => selected.has(i.id))
+                      .reduce((s, i) => s + i.stock * i.costPrice, 0)
+                    )}
+                  </strong>
+                  {' · '}
+                  Filtered stock value:{' '}
+                  <strong className="text-green-600">
+                    {naira(filtered.reduce((s, i) => s + i.stock * i.costPrice, 0))}
+                  </strong>
+                </span>
+              </div>
+            )}
+          </>
         )}
       </main>
 

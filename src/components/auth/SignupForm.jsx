@@ -76,6 +76,15 @@ function PasswordStrength({ password }) {
   );
 }
 
+const businessTypeOptions = [
+  { value: 'retail',        label: 'Retail Store'   },
+  { value: 'wholesale',     label: 'Wholesale'      },
+  { value: 'ecommerce',     label: 'E-commerce'     },
+  { value: 'distribution',  label: 'Distribution'   },
+  { value: 'manufacturing', label: 'Manufacturing'  },
+  { value: 'other',         label: 'Other'          },
+];
+
 export default function SignupForm() {
   const navigate = useNavigate();
   const { signup, isLoading } = useAuth();
@@ -84,6 +93,7 @@ export default function SignupForm() {
     firstName: '',
     lastName: '',
     businessName: '',
+    businessType: '',
     email: '',
     phone: '',
     password: '',
@@ -107,6 +117,7 @@ export default function SignupForm() {
     if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
     if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
     if (!formData.businessName.trim()) newErrors.businessName = 'Business name is required';
+    if (!formData.businessType) newErrors.businessType = 'Please select a business type';
     return newErrors;
   };
 
@@ -225,15 +236,24 @@ export default function SignupForm() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Business Type</label>
-              <select className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all">
+              <select
+                name="businessType"
+                value={formData.businessType}
+                onChange={handleChange}
+                className={`w-full px-4 py-3 rounded-xl border bg-white text-sm outline-none transition-all
+                  ${errors.businessType
+                    ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-2 focus:ring-red-100'
+                    : 'border-gray-200 focus:border-green-400 focus:ring-2 focus:ring-green-100'
+                  }`}
+              >
                 <option value="">Select your business type</option>
-                <option value="retail">Retail Store</option>
-                <option value="wholesale">Wholesale</option>
-                <option value="ecommerce">E-commerce</option>
-                <option value="distribution">Distribution</option>
-                <option value="manufacturing">Manufacturing</option>
-                <option value="other">Other</option>
+                {businessTypeOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
               </select>
+              {errors.businessType && (
+                <p className="mt-1.5 text-xs text-red-500">⚠ {errors.businessType}</p>
+              )}
             </div>
 
             <button

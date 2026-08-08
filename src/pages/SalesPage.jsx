@@ -10,7 +10,10 @@ import {
 import TopBar        from '../components/layout/TopBar';
 import NewSaleModal  from '../components/sales/NewSaleModal';
 import ViewOrderModal from '../components/sales/ViewOrderModal';
-import { salesData as initialSales } from '../data/mockData';
+import LoadingState from '../components/ui/LoadingState';
+import ErrorState from '../components/ui/ErrorState';
+import ActionErrorBanner from '../components/ui/ActionErrorBanner';
+import { useOrders } from '../hooks/useOrders';
 
 const naira = (v) => {
   if (v >= 1000000) return `₦${(v / 1000000).toFixed(1)}M`;
@@ -127,13 +130,14 @@ function SaleCard({ order, onView }) {
 }
 
 export default function SalesPage() {
-  const [sales, setSales]           = useState(initialSales);
+  const { orders: sales, loading, error, refetch, addOrder } = useOrders();
   const [search, setSearch]         = useState('');
   const [statusFilter, setStatus]   = useState('All');
   const [paymentFilter, setPayment] = useState('All');
   const [newSaleOpen, setNewSale]   = useState(false);
   const [viewOrder, setViewOrder]   = useState(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [actionError, setActionError] = useState(null);
 
   const stats = useMemo(() => {
     const now      = new Date();
@@ -167,9 +171,13 @@ export default function SalesPage() {
     return r.sort((a, b) => new Date(b.date) - new Date(a.date));
   }, [sales, search, statusFilter, paymentFilter]);
 
-  const handleNewSale = useCallback((order) => {
-    setSales(prev => [order, ...prev]);
-  }, []);
+  const handleNewSale = useCallback(async (order) => {
+    try {
+      await addOrder(order);
+    } catch (err) {
+      setActionError(err.message ?? 'Could not save this sale. Please try again.');
+    }
+  }, [addOrder]);
 
   const openView = useCallback((order) => setViewOrder(order), []);
 
@@ -199,236 +207,245 @@ export default function SalesPage() {
 
       <main className="flex-1 px-4 sm:px-6 lg:px-8 py-5 sm:py-6 space-y-5">
 
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-          <SummaryCard icon={TrendingUp} iconBg="bg-green-100" iconColor="text-green-600"
-            label="Today's Sales" value={naira(stats.today)}
-            sub="Current day" subColor="text-green-600" animDelay="0.05s" />
-          <SummaryCard icon={Calendar} iconBg="bg-blue-100" iconColor="text-blue-600"
-            label="This Week" value={naira(stats.week)}
-            sub="Last 7 days" subColor="text-blue-600" animDelay="0.10s" />
-          <SummaryCard icon={ShoppingBag} iconBg="bg-purple-100" iconColor="text-purple-600"
-            label="This Month" value={naira(stats.month)}
-            sub="Completed only" subColor="text-purple-600" animDelay="0.15s" />
-          <SummaryCard icon={CreditCard} iconBg="bg-amber-100" iconColor="text-amber-600"
-            label="Total Orders" value={stats.totalOrders}
-            sub={`${stats.pending} pending`} subColor="text-amber-600" animDelay="0.20s" />
-        </div>
+        {loading && <LoadingState label="Loading sales..." />}
+        {!loading && error && <ErrorState message={error} onRetry={refetch} />}
 
-        {stats.pending > 0 && (
-          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 animate-fade-up">
-            <div className="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <AlertCircle size={14} className="text-amber-600" />
-            </div>
-            <p className="text-sm text-amber-800 font-medium flex-1">
-              <strong>{stats.pending}</strong> pending order{stats.pending > 1 ? 's' : ''} need attention.
-            </p>
-            <button onClick={() => setStatus('Pending')}
-              className="flex items-center gap-1 text-xs font-bold text-amber-700 hover:text-amber-900 transition-colors flex-shrink-0">
-              View <ArrowRight size={12} />
-            </button>
-          </div>
-        )}
-
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative flex-1 min-w-[180px] max-w-sm">
-              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search order, customer, item..."
-                className="w-full pl-10 pr-9 py-2.5 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all" />
-              {search && (
-                <button onClick={() => setSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-
-            <button onClick={() => setShowFilters(v => !v)}
-              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all
-                ${showFilters || hasActiveFilters
-                  ? 'bg-green-50 border-green-300 text-green-700'
-                  : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                }`}>
-              <SlidersHorizontal size={14} />
-              <span className="hidden sm:inline">Filters</span>
-              {hasActiveFilters && !showFilters && (
-                <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-              )}
-            </button>
-
-            <span className="text-sm text-gray-400 font-medium ml-auto">
-              <strong className="text-gray-700">{filtered.length}</strong>
-              <span className="hidden sm:inline"> of {sales.length} orders</span>
-            </span>
-          </div>
-
-          {showFilters && (
-            <div className="flex items-center gap-2 flex-wrap animate-fade-up">
-              <div className="relative">
-                <select value={statusFilter} onChange={e => setStatus(e.target.value)}
-                  className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-green-400 transition-all font-medium text-gray-600 cursor-pointer">
-                  <option value="All">All Status</option>
-                  <option value="Completed">Completed</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Cancelled">Cancelled</option>
-                </select>
-                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
-
-              <div className="relative">
-                <select value={paymentFilter} onChange={e => setPayment(e.target.value)}
-                  className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-green-400 transition-all font-medium text-gray-600 cursor-pointer">
-                  <option value="All">All Payments</option>
-                  <option value="Cash">Cash</option>
-                  <option value="Transfer">Transfer</option>
-                  <option value="POS">POS</option>
-                </select>
-                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
-
-              {hasActiveFilters && (
-                <button onClick={() => { setSearch(''); setStatus('All'); setPayment('All'); }}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:text-red-700 transition-colors px-2 py-1">
-                  <X size={12} /> Clear filters
-                </button>
-              )}
-
-              <div className="ml-auto text-xs font-semibold text-gray-500 hidden sm:block">
-                Filtered total:{' '}
-                <strong className="text-green-600">
-                  {naira(filtered.filter(s => s.status === 'completed').reduce((s, o) => s + o.total, 0))}
-                </strong>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm text-center animate-fade-up">
-            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <ShoppingBag size={28} className="text-gray-400" />
-            </div>
-            <h3 className="text-base font-bold text-gray-700 mb-2">
-              No orders found
-            </h3>
-            <p className="text-sm text-gray-400 mb-6 max-w-xs">
-              {search
-                ? `No results for "${search}".`
-                : 'No sales recorded yet. Create your first sale!'}
-            </p>
-            <button onClick={() => setNewSale(true)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 active:scale-95 transition-all">
-              <Plus size={15} /> New Sale
-            </button>
-          </div>
-        )}
-
-        {filtered.length > 0 && (
+        {!loading && !error && (
           <>
-            <div className="lg:hidden space-y-3">
-              {filtered.map(order => (
-                <SaleCard key={order.id} order={order} onView={openView} />
-              ))}
+            <ActionErrorBanner message={actionError} onDismiss={() => setActionError(null)} />
+
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+              <SummaryCard icon={TrendingUp} iconBg="bg-green-100" iconColor="text-green-600"
+                label="Today's Sales" value={naira(stats.today)}
+                sub="Current day" subColor="text-green-600" animDelay="0.05s" />
+              <SummaryCard icon={Calendar} iconBg="bg-blue-100" iconColor="text-blue-600"
+                label="This Week" value={naira(stats.week)}
+                sub="Last 7 days" subColor="text-blue-600" animDelay="0.10s" />
+              <SummaryCard icon={ShoppingBag} iconBg="bg-purple-100" iconColor="text-purple-600"
+                label="This Month" value={naira(stats.month)}
+                sub="Completed only" subColor="text-purple-600" animDelay="0.15s" />
+              <SummaryCard icon={CreditCard} iconBg="bg-amber-100" iconColor="text-amber-600"
+                label="Total Orders" value={stats.totalOrders}
+                sub={`${stats.pending} pending`} subColor="text-amber-600" animDelay="0.20s" />
             </div>
 
-            <div className="hidden lg:block bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden animate-fade-up">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[700px]">
-                  <thead className="bg-gray-50/80 border-b border-gray-100">
-                    <tr>
-                      {['Order ID', 'Customer', 'Items', 'Total', 'Payment', 'Date', 'Status', 'Actions'].map(h => (
-                        <th key={h} className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 px-4 py-3 whitespace-nowrap">
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map(order => (
-                      <tr key={order.id}
-                        className="border-b border-gray-50 last:border-0 hover:bg-green-50/20 transition-colors group">
-
-                        <td className="px-4 py-3.5">
-                          <span className="text-sm font-bold text-green-600 font-mono">
-                            #{order.id}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0"
-                              style={{ background: order.customer.color, color: order.customer.textColor }}>
-                              {order.customer.initials}
-                            </div>
-                            <span className="text-sm font-semibold text-gray-800 truncate max-w-[120px]">
-                              {order.customer.name}
-                            </span>
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <p className="text-sm font-semibold text-gray-700">
-                            {order.items.length} item{order.items.length > 1 ? 's' : ''}
-                          </p>
-                          <p className="text-[11px] text-gray-400 truncate max-w-[140px]">
-                            {order.items.map(i => i.name).join(', ')}
-                          </p>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <span className="text-sm font-extrabold text-gray-900 tabular-nums">
-                            {naira(order.total)}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <PaymentBadge method={order.payment} />
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
-                            {formatDate(order.date)}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <StatusBadge status={order.status} />
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-1.5 opacity-50 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => openView(order)}
-                              className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 text-gray-400 transition-all"
-                              title="View order">
-                              <Eye size={13} />
-                            </button>
-                            <button
-                              className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-gray-100 text-gray-400 transition-all"
-                              title="Print receipt">
-                              <Printer size={13} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {stats.pending > 0 && (
+              <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 animate-fade-up">
+                <div className="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <AlertCircle size={14} className="text-amber-600" />
+                </div>
+                <p className="text-sm text-amber-800 font-medium flex-1">
+                  <strong>{stats.pending}</strong> pending order{stats.pending > 1 ? 's' : ''} need attention.
+                </p>
+                <button onClick={() => setStatus('Pending')}
+                  className="flex items-center gap-1 text-xs font-bold text-amber-700 hover:text-amber-900 transition-colors flex-shrink-0">
+                  View <ArrowRight size={12} />
+                </button>
               </div>
-            </div>
-          </>
-        )}
+            )}
 
-        {filtered.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
-            <span>Showing <strong className="text-gray-700">{filtered.length}</strong> of {sales.length} orders</span>
-            <span className="hidden sm:block">
-              Completed revenue:{' '}
-              <strong className="text-green-600">
-                {naira(filtered.filter(s => s.status === 'completed').reduce((s, o) => s + o.total, 0))}
-              </strong>
-            </span>
-          </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative flex-1 min-w-[180px] max-w-sm">
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input value={search} onChange={e => setSearch(e.target.value)}
+                    placeholder="Search order, customer, item..."
+                    className="w-full pl-10 pr-9 py-2.5 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all" />
+                  {search && (
+                    <button onClick={() => setSearch('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <button onClick={() => setShowFilters(v => !v)}
+                  className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all
+                    ${showFilters || hasActiveFilters
+                      ? 'bg-green-50 border-green-300 text-green-700'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                    }`}>
+                  <SlidersHorizontal size={14} />
+                  <span className="hidden sm:inline">Filters</span>
+                  {hasActiveFilters && !showFilters && (
+                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                  )}
+                </button>
+
+                <span className="text-sm text-gray-400 font-medium ml-auto">
+                  <strong className="text-gray-700">{filtered.length}</strong>
+                  <span className="hidden sm:inline"> of {sales.length} orders</span>
+                </span>
+              </div>
+
+              {showFilters && (
+                <div className="flex items-center gap-2 flex-wrap animate-fade-up">
+                  <div className="relative">
+                    <select value={statusFilter} onChange={e => setStatus(e.target.value)}
+                      className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-green-400 transition-all font-medium text-gray-600 cursor-pointer">
+                      <option value="All">All Status</option>
+                      <option value="Completed">Completed</option>
+                      <option value="Pending">Pending</option>
+                      <option value="Cancelled">Cancelled</option>
+                    </select>
+                    <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+
+                  <div className="relative">
+                    <select value={paymentFilter} onChange={e => setPayment(e.target.value)}
+                      className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-green-400 transition-all font-medium text-gray-600 cursor-pointer">
+                      <option value="All">All Payments</option>
+                      <option value="Cash">Cash</option>
+                      <option value="Transfer">Transfer</option>
+                      <option value="POS">POS</option>
+                    </select>
+                    <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+
+                  {hasActiveFilters && (
+                    <button onClick={() => { setSearch(''); setStatus('All'); setPayment('All'); }}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:text-red-700 transition-colors px-2 py-1">
+                      <X size={12} /> Clear filters
+                    </button>
+                  )}
+
+                  <div className="ml-auto text-xs font-semibold text-gray-500 hidden sm:block">
+                    Filtered total:{' '}
+                    <strong className="text-green-600">
+                      {naira(filtered.filter(s => s.status === 'completed').reduce((s, o) => s + o.total, 0))}
+                    </strong>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {filtered.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm text-center animate-fade-up">
+                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <ShoppingBag size={28} className="text-gray-400" />
+                </div>
+                <h3 className="text-base font-bold text-gray-700 mb-2">
+                  No orders found
+                </h3>
+                <p className="text-sm text-gray-400 mb-6 max-w-xs">
+                  {search
+                    ? `No results for "${search}".`
+                    : 'No sales recorded yet. Create your first sale!'}
+                </p>
+                <button onClick={() => setNewSale(true)}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 active:scale-95 transition-all">
+                  <Plus size={15} /> New Sale
+                </button>
+              </div>
+            )}
+
+            {filtered.length > 0 && (
+              <>
+                <div className="lg:hidden space-y-3">
+                  {filtered.map(order => (
+                    <SaleCard key={order.id} order={order} onView={openView} />
+                  ))}
+                </div>
+
+                <div className="hidden lg:block bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden animate-fade-up">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[700px]">
+                      <thead className="bg-gray-50/80 border-b border-gray-100">
+                        <tr>
+                          {['Order ID', 'Customer', 'Items', 'Total', 'Payment', 'Date', 'Status', 'Actions'].map(h => (
+                            <th key={h} className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 px-4 py-3 whitespace-nowrap">
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map(order => (
+                          <tr key={order.id}
+                            className="border-b border-gray-50 last:border-0 hover:bg-green-50/20 transition-colors group">
+
+                            <td className="px-4 py-3.5">
+                              <span className="text-sm font-bold text-green-600 font-mono">
+                                #{order.id}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0"
+                                  style={{ background: order.customer.color, color: order.customer.textColor }}>
+                                  {order.customer.initials}
+                                </div>
+                                <span className="text-sm font-semibold text-gray-800 truncate max-w-[120px]">
+                                  {order.customer.name}
+                                </span>
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <p className="text-sm font-semibold text-gray-700">
+                                {order.items.length} item{order.items.length > 1 ? 's' : ''}
+                              </p>
+                              <p className="text-[11px] text-gray-400 truncate max-w-[140px]">
+                                {order.items.map(i => i.name).join(', ')}
+                              </p>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <span className="text-sm font-extrabold text-gray-900 tabular-nums">
+                                {naira(order.total)}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <PaymentBadge method={order.payment} />
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
+                                {formatDate(order.date)}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <StatusBadge status={order.status} />
+                            </td>
+
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-1.5 opacity-50 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => openView(order)}
+                                  className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 text-gray-400 transition-all"
+                                  title="View order">
+                                  <Eye size={13} />
+                                </button>
+                                <button
+                                  className="w-9 h-9 flex items-center justify-center rounded-xl border border-gray-200 bg-white hover:bg-gray-100 text-gray-400 transition-all"
+                                  title="Print receipt">
+                                  <Printer size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {filtered.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
+                <span>Showing <strong className="text-gray-700">{filtered.length}</strong> of {sales.length} orders</span>
+                <span className="hidden sm:block">
+                  Completed revenue:{' '}
+                  <strong className="text-green-600">
+                    {naira(filtered.filter(s => s.status === 'completed').reduce((s, o) => s + o.total, 0))}
+                  </strong>
+                </span>
+              </div>
+            )}
+          </>
         )}
       </main>
 
