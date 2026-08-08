@@ -1,4 +1,0 @@
-Two things worth flagging before Step 3:
-
-DashboardPage still imports pendingOrders directly from mockData.js. Its shape ({id, customer, amount, items}) doesn't match the Order entity from useOrders, and API_CONTRACT.md doesn't define a dedicated endpoint for it — it's dashboard-summary territory. Left as-is rather than force-fitting it.
-ReportsPage's trend/breakdown arrays (salesTrendData, paymentBreakdown, etc.) stay as direct mock imports for the same reason — they're /reports/* aggregate territory per the contract, not CRUD entities.
